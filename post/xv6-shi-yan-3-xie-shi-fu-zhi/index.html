@@ -1,0 +1,356 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title> xv6实验[3]-写时复制 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title=" xv6实验[3]-写时复制 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="1、为什么需要COW？
+在xv6原生的fork()系统调用中，内核会采用“无脑硬拷贝”的策略：遍历父进程的所有虚拟内存，分配同等数量的物理页，并使用memmove将数据逐字节拷贝给子进程。
+这种设计存在两个致命缺陷：
+1、极高的时空开销：对..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+               xv6实验[3]-写时复制
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-11
+              </span>
+              <span>
+                8 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="1-为什么需要cow">1、为什么需要COW？</h1>
+<p>在xv6原生的<code>fork()</code>系统调用中，内核会采用“无脑硬拷贝”的策略：遍历父进程的所有虚拟内存，分配同等数量的物理页，并使用<code>memmove</code>将数据逐字节拷贝给子进程。<br>
+这种设计存在两个致命缺陷：<br>
+<strong>1、极高的时空开销</strong>：对于占用内存较大的进程，完整的内存拷贝会导致极大的延迟，并瞬间消耗大量物理内存。<br>
+<strong>2、严重的资源浪费</strong>：在 Unix/Linux 生态中，fork() 之后紧接 exec()（加载新程序）是最常见的进程创建范式。原先费时费力拷贝过来的物理页数据，在 exec() 执行的瞬间就会被清空作废。</p>
+<p>为解决这一问题，程序员们引入了写时复制（Copy-on-Write, COW）机制：在 fork() 时只拷贝页表而不分配物理页帧；父子进程共享同一块物理内存，并将其页表项（PTE）标记为只读。只有当某一方尝试写入数据触发缺页异常时，内核才进行真正的内存分配与拷贝。</p>
+<h1 id="2-核心架构重构">2、核心架构重构</h1>
+<h2 id="21-改造-fork-与-uvmcopy共享与降权">2.1 改造 fork 与 uvmcopy：共享与降权</h2>
+<p><code>COW</code>机制的第一步是修改<code>fork</code>的底层复制逻辑。我们重写<code>uvmcopy</code>函数，使其不再调用<code>kalloc</code> 分配新内存，而是直接将子进程的虚拟地址映射到父进程当前的物理页上。<br>
+关键在于权限管理：我们需要剥夺父子进程的写权限（清除 PTE_W），并打上自定义的软件标记 PTE_COW，以便后续在异常处理时识别。同时，由于物理页被多个进程共享，必须增加其引用计数。</p>
+<pre><code class="language-c">int
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  for(i = 0; i &lt; sz; i += PGSIZE){
+    if((pte = walk(old, i, 0)) == 0)
+      panic(&quot;uvmcopy: pte should exist&quot;);
+    if((*pte &amp; PTE_V) == 0)
+      panic(&quot;uvmcopy: page not present&quot;);
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    // 只有拥有可写权限才赋予COW标志
+    if (flags &amp; PTE_W)
+    {
+      flags = (flags &amp; ~PTE_W) | PTE_COW;
+      *pte = PA2PTE(pa) | flags;
+    }
+    // 子进程页表映射父亲当前页映射的物理地址
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      goto err;
+    }
+    // 添加引用
+    kaddref((void *)pa);
+  }
+  sfence_vma();
+  return 0;
+ err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}
+</code></pre>
+<h2 id="22-物理页生命周期管理引用计数机制">2.2 物理页生命周期管理：引用计数机制</h2>
+<p>为了安全回收内存，必须引入引用计数体系。实际可用的物理内存是从<code>KERNBASE</code>到<code>PHYSTOP</code>（共计 128MB）。我们可以通过偏移量映射出一个静态数组 page_ref，记录每个物理页帧的被映射次数。</p>
+<pre><code class="language-c">#define PA2INDEX(pa) (((uint64)pa - KERNBASE) / PGSIZE)
+int page_ref[(PHYSTOP - KERNBASE) / PGSIZE];
+
+// 增加引用
+int kaddref(void *pa) {
+  int ref = 0;
+  acquire(&amp;ref_lock);
+  ref = ++page_ref[PA2INDEX(pa)];
+  release(&amp;ref_lock);
+  return ref;
+}
+
+// 减少引用
+int ksubref(void *pa) {
+  int ref = 0;
+  acquire(&amp;ref_lock);
+  if (page_ref[PA2INDEX(pa)] &gt; 0) {
+    ref = --page_ref[PA2INDEX(pa)];
+  }
+  release(&amp;ref_lock);
+  return ref;
+}
+</code></pre>
+<p>配套修改<code>kfree</code>函数，确立“递减-判断-回收”的逻辑：只有当引用计数降至 0 时，才允许使用垃圾数据填充并挂入空闲链表。。</p>
+<pre><code class="language-c">void kfree(void *pa) {
+  struct run *r;
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa &lt; end || (uint64)pa &gt;= PHYSTOP)
+    panic(&quot;kfree&quot;);
+  // 第一步：安全递减引用计数
+  int ref = ksubref(pa);
+  if (ref &gt; 0) {
+      return; // 仍有进程共享，直接返回
+  }
+  // 第二步：彻底回收并放回 freelist
+  memset(pa, 1, PGSIZE); 
+  r = (struct run*)pa;
+  acquire(&amp;kmem.lock);
+  r-&gt;next = kmem.freelist;
+  kmem.freelist = r;
+  release(&amp;kmem.lock);
+}
+</code></pre>
+<h1 id="3-缺页拦截与按需分配-demand-allocation">3. 缺页拦截与按需分配 (Demand Allocation)</h1>
+<h2 id="31-捕获-store-page-fault">3.1 捕获 Store Page Fault</h2>
+<p>当进程企图写入一个被标记为只读的 COW 页时，RISC-V 的 MMU 会触发写缺页异常（scause == 15）。在 kernel/trap.c 的 usertrap 函数中，我们需要对此异常进行精准拦截与分发。<br>
+<strong>架构细节</strong>： 注意处理系统调用（scause == 8）时，我们将 PC 指针推到了下一条指令（epc += 4）。但在处理缺页异常时<strong>不需要这么做</strong>，因为分配完物理页并恢复写权限后，我们需要让 CPU 重新执行那条曾经失败的写入指令。</p>
+<pre><code class="language-c">void usertrap(void) {
+  // ... 前置鉴权与上下文保存 ...
+  if(r_scause() == 8){
+    // 处理系统调用
+    p-&gt;trapframe-&gt;epc += 4;
+    intr_on();
+    syscall();
+  }
+  // 捕获写缺页异常，且该页面必须是合法的 COW 页面
+  else if(r_scause() == 15 &amp;&amp; uvmcheckcowpage(p-&gt;pagetable, r_stval())) {
+      if (cow_alloc(p-&gt;pagetable, r_stval()) == -1) {
+        p-&gt;killed = 1; // 内存分配失败（OOM），终止进程
+      }
+  }
+  // ...
+}
+</code></pre>
+<p>这里封装了一个函数<code>uvmcheckcowpage</code>，确保触发异常的虚拟地址位于合法范围内，并且确实携带有 PTE_COW 标记。</p>
+<pre><code class="language-c">int uvmcheckcowpage(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  return va &lt; MAXVA &amp;&amp; ((pte = walk(pagetable, va, 0)) != 0)
+  &amp;&amp; (*pte &amp; PTE_V)
+  &amp;&amp; (*pte &amp; PTE_U)
+  &amp;&amp; (*pte &amp; PTE_COW);
+}
+</code></pre>
+<h2 id="32-极致的无拷贝优化cow_alloc-与-kcopy_n_deref">3.2 极致的无拷贝优化：cow_alloc 与 kcopy_n_deref</h2>
+<p>这是整个 COW 机制中最精妙的部分。当异常发生时，如果该物理页的引用计数已经降为 1（说明其他共享进程均已退出，当前进程处于独占状态），我们完全不需要申请新内存，直接在原物理页上恢复 PTE_W 权限即可。如果不是1，就老老实实从内存里面找到找到一个未被使用的物理页，将原物理页的内容拷贝过去。</p>
+<pre><code class="language-c">void * kcopy_n_deref(void *pa) {
+  // 终极优化：独占页面免拷贝
+  if (readref(pa) &lt;= 1) {
+    return pa; 
+  }
+  // 共享页面：分配新页并复制数据
+  uint64 newpa = (uint64)kalloc();
+  if (newpa == 0) return 0;
+  memmove((void*)newpa, (void*)pa, PGSIZE);
+  kfree(pa); // 释放原页面的引用
+  return (void *)newpa;
+}
+
+int cow_alloc(pagetable_t pagetable, uint64 va) {
+  pte_t *pte;
+  if ((pte = walk(pagetable, va, 0)) == 0) panic(&quot;cow_alloc: walk&quot;);
+    
+  uint64 pa = PTE2PA(*pte);
+  uint64 newpa = (uint64)kcopy_n_deref((void*)pa); 
+  if (newpa == 0) return -1; 
+  // 直接原地修改 PTE，极致高效，且无视 va 不对齐问题
+  uint64 flags = (PTE_FLAGS(*pte) | PTE_W) &amp; ~PTE_COW;
+  *pte = PA2PTE(newpa) | flags;
+  sfence_vma(); // 必须刷新 TLB
+  return 0;
+}
+</code></pre>
+<h2 id="33-补齐内核态盲区copyout-防护">3.3 补齐内核态盲区：copyout 防护</h2>
+<p>系统的缺页异常机制通常只能捕获用户态的非法写入。如果内核代码（如通过 read 系统调用读取文件时）使用 copyout 函数，它会通过软件寻址直接绕过 CPU 的内存保护机制，从而污染共享的物理页。<br>
+为此，必须在 copyout 中前置鉴权，强制触发 COW 内存分配：</p>
+<pre><code class="language-c">int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
+  uint64 n, va0, pa0;
+  while(len &gt; 0){
+    va0 = PGROUNDDOWN(dstva);
+    // 前置拦截：如果是 COW 页，提前触发复制与权限变更
+    if (uvmcheckcowpage(pagetable, va0)) {
+      if (cow_alloc(pagetable, va0) == -1) return -1;
+    }
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0) return -1;
+    n = PGSIZE - (dstva - va0);
+    if(n &gt; len) n = len;
+    memmove((void *)(pa0 + (dstva - va0)), src, n);
+    len -= n;
+    src += n;
+    dstva = va0 + PGSIZE;
+  }
+  return 0;
+}
+</code></pre>
+<p>从底层实现的角度来看，COW 机制不仅仅是一种节约内存的策略，更体现了现代工业级操作系统设计中“懒惰（Lazy）即高效”的核心哲学。这种将昂贵的资源分配操作尽可能推迟（甚至避免）的思想，正是构建高性能底层系统的基石。最后也是通过了实验，这个实验花了一天时间，继续努力吧，下一个实验是多线程。<br>
+<img src="https://dss544.github.io/post-images/1781178857278.png" alt="" loading="lazy"></p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81cow">1、为什么需要COW？</a></li>
+<li><a href="#2-%E6%A0%B8%E5%BF%83%E6%9E%B6%E6%9E%84%E9%87%8D%E6%9E%84">2、核心架构重构</a>
+<ul>
+<li><a href="#21-%E6%94%B9%E9%80%A0-fork-%E4%B8%8E-uvmcopy%E5%85%B1%E4%BA%AB%E4%B8%8E%E9%99%8D%E6%9D%83">2.1 改造 fork 与 uvmcopy：共享与降权</a></li>
+<li><a href="#22-%E7%89%A9%E7%90%86%E9%A1%B5%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E7%AE%A1%E7%90%86%E5%BC%95%E7%94%A8%E8%AE%A1%E6%95%B0%E6%9C%BA%E5%88%B6">2.2 物理页生命周期管理：引用计数机制</a></li>
+</ul>
+</li>
+<li><a href="#3-%E7%BC%BA%E9%A1%B5%E6%8B%A6%E6%88%AA%E4%B8%8E%E6%8C%89%E9%9C%80%E5%88%86%E9%85%8D-demand-allocation">3. 缺页拦截与按需分配 (Demand Allocation)</a>
+<ul>
+<li><a href="#31-%E6%8D%95%E8%8E%B7-store-page-fault">3.1 捕获 Store Page Fault</a></li>
+<li><a href="#32-%E6%9E%81%E8%87%B4%E7%9A%84%E6%97%A0%E6%8B%B7%E8%B4%9D%E4%BC%98%E5%8C%96cow_alloc-%E4%B8%8E-kcopy_n_deref">3.2 极致的无拷贝优化：cow_alloc 与 kcopy_n_deref</a></li>
+<li><a href="#33-%E8%A1%A5%E9%BD%90%E5%86%85%E6%A0%B8%E6%80%81%E7%9B%B2%E5%8C%BAcopyout-%E9%98%B2%E6%8A%A4">3.3 补齐内核态盲区：copyout 防护</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6-shi-yan-2-ye-biao/">
+              <h3 class="post-title">
+                xv6实验[2]-页表Superpages内核实现
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

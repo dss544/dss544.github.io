@@ -1,0 +1,436 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xv6实验[1]-启动流程分析和系统调用 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="xv6实验[1]-启动流程分析和系统调用 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="启动流程
+1. 汇编入口 entry.S：多核栈初始化
+在 xv6 操作系统启动的极早期阶段，系统经历了从汇编入口到 C 语言环境的建立，以及从最高特权级（Machine Mode）到内核级（Supervisor Mode）的巧妙切换。本文..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              xv6实验[1]-启动流程分析和系统调用
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-06
+              </span>
+              <span>
+                11 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="启动流程">启动流程</h1>
+<h2 id="1-汇编入口-entrys多核栈初始化">1. 汇编入口 entry.S：多核栈初始化</h2>
+<p>在 xv6 操作系统启动的极早期阶段，系统经历了从汇编入口到 C 语言环境的建立，以及从最高特权级（Machine Mode）到内核级（Supervisor Mode）的巧妙切换。本文将梳理从 entry.S 到跳入 main 函数的核心全过程。</p>
+<pre><code class="language-c">.global _entry
+_entry:
+        # 1. 将 stack0 数组的基地址加载到栈指针寄存器 sp
+        la sp, stack0                   
+        # 2. 将常数 4096 (4KB，每个 CPU 的栈大小) 存入 a0
+        li a0, 1024*4                   
+
+        # 3. 读取当前正在运行的 CPU 核心编号 (mhartid)
+        csrr a1, mhartid           
+        # 4. 编号加 1 (如 CPU0 变 1，CPU1 变 2)
+        addi a1, a1, 1                 
+        
+        # 5. a0 = 4096 * (hartid + 1)，计算当前 CPU 栈顶的内存偏移量
+        mul a0, a0, a1                
+        # 6. sp = stack0 + 偏移量 (例如 CPU0 的 sp 指向 4096，CPU1 指向 8192)
+        add sp, sp, a0                
+
+        # 7. 栈准备完毕，正式跳入 start.c 中的 start() 函数
+        call start                          
+spin:
+        # 兜底机制：正常情况不会执行到这里，防止 CPU 跑飞
+        j spin
+</code></pre>
+<h2 id="2-start-函数特权降级与硬件配置">2. start() 函数：特权降级与硬件配置</h2>
+<p>进入 start() 时，CPU 处于拥有最高权限的 M 模式。为了安全运行内核，系统需要切换到 S 模式。RISC-V 不允许直接降级，因此 start() 巧妙地伪造了一个“中断返回现场”，利用 mret 指令“金蝉脱壳”跳入 S 模式的 main 函数。<br>
+在此之前，start 还完成了异常委派、内存权限下放等关键底层配置。</p>
+<pre><code class="language-c">void start() {
+  /* 1. 伪造 mstatus：设置“中断前权限”为 S 模式 */
+  unsigned long x = r_mstatus();
+  x &amp;= ~MSTATUS_MPP_MASK;   // 清除原有的 M 模式标志
+  x |= MSTATUS_MPP_S;       // 伪造 S 模式标志
+  w_mstatus(x);
+
+  /* 2. 伪造 mepc：设置“中断返回地址”为 main 函数入口 */
+  w_mepc((uint64)main);
+
+  /* 3. 内存系统初始化：刚开机时关闭虚拟地址转换，直接使用物理地址 */ 
+  w_satp(0);
+
+  /* 4. 异常与中断委派：将大部分软硬件异常下放给 S 模式，避免频繁打扰 M 模式 */
+  w_medeleg(0xffff);
+  w_mideleg(0xffff);
+
+  /* 5. 使能 S 模式下的外部中断、时钟中断和软件中断 */
+  w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
+
+  /* 6. PMP 物理内存保护：给 S 模式下放全盘物理内存的 RWX 权限 */
+  w_pmpaddr0(0x3fffffffffffffull);
+  w_pmpcfg0(0xf);
+
+  /* 7. 初始化系统心跳 (时钟中断) */
+  timerinit();
+
+  /* 8. 备份 CPU 编号：将 mhartid 的值存入 tp 寄存器，方便日后 S 模式读取 */
+  int id = r_mhartid();
+  w_tp(id);
+
+  /* 9. 执行中断返回：CPU 降级至 S 模式，并自动跳转到 mepc 指向的 main 函数 */
+  asm volatile(&quot;mret&quot;);
+}
+</code></pre>
+<h2 id="3-timerinit配置系统心跳">3. timerinit()：配置系统心跳</h2>
+<p>时钟中断是操作系统的“心脏”，驱动着分时多任务的进程调度。xv6 设置每 0.1 秒触发一次 M 模式下的硬件时钟中断。</p>
+<pre><code class="language-c">void timerinit() {
+  /* 获取当前 CPU 编号 */
+  int id = r_mhartid();
+
+  /* 设定时间间隔，QEMU 中 1000000 大约对应 0.1 秒 */
+  int interval = 1000000; 
+  
+  /* 更新 CLINT 硬件闹钟：下一次中断时间 = 当前时间 + interval */
+  *(uint64*)CLINT_MTIMECMP(id) = *(uint64*)CLINT_MTIME + interval;
+
+  /* 获取 timer_scratch 数组空间，用于中断发生时保存通用寄存器 */
+  uint64 *scratch = &amp;timer_scratch[id][0];
+  scratch[3] = CLINT_MTIMECMP(id);   // 存入闹钟寄存器地址
+  scratch[4] = interval;             // 存入时间间隔
+  
+  /* 将 scratch 的基地址存入特权寄存器 mscratch，供中断汇编代码使用 */
+  w_mscratch((uint64)scratch);
+
+  /* 设置 M 模式的中断向量表基址：中断发生时跳入 timervec 汇编 */
+  w_mtvec((uint64)timervec);
+
+  /* 开启 M 模式全局中断与时钟中断 */
+  w_mstatus(r_mstatus() | MSTATUS_MIE);
+  w_mie(r_mie() | MIE_MTIE);
+}
+</code></pre>
+<h2 id="4-timervec时钟中断">4. timervec：时钟中断</h2>
+<p>当 0.1 秒的闹钟响起，硬件会强制跳转到 timervec。由于汇编代码干活需要使用通用寄存器，这段代码利用 mscratch 和原子交换指令 csrrw 实现了极度精妙的“空手套白狼”，并在处理完毕后向 S 模式发送软件中断，触发进程调度。</p>
+<pre><code class="language-c">.globl timervec
+.align 4
+timervec:
+        # 1. 原子交换：a0 变成 scratch 的内存指针，原 a0 数据被安全锁入 mscratch
+        csrrw a0, mscratch, a0
+
+        # 2. 保护现场：将 a1, a2, a3 的值存入 scratch[0..2] 腾出寄存器
+        sd a1, 0(a0)
+        sd a2, 8(a0)
+        sd a3, 16(a0)
+
+        # 3. 续定闹钟：读取闹钟寄存器物理地址和时间间隔
+        ld a1, 24(a0)       # a1 = CLINT_MTIMECMP(hart)
+        ld a2, 32(a0)       # a2 = interval (0.1s)
+        
+        # 计算并写回下一次中断时间 (旧时间 + 0.1s)
+        ld a3, 0(a1)
+        add a3, a3, a2
+        sd a3, 0(a1)        # 硬件自动开始下一次 0.1 秒倒计时
+
+        # 4. 注入软中断：向 sip 寄存器写 2，给 S 模式发送一个软件中断
+        # 这将唤醒内核态的中断处理机制，进而触发进程的 yield() 调度
+        li a1, 2
+        csrw sip, a1
+
+        # 5. 恢复现场：将保存在内存里的 a1, a2, a3 还原
+        ld a3, 16(a0)
+        ld a2, 8(a0)
+        ld a1, 0(a0)
+
+        # 6. 还原 a0：再次交换，恢复被中断程序的 a0 值，mscratch 重新变回内存指针
+        csrrw a0, mscratch, a0
+
+        # 7. 中断返回，回到刚才被中断的程序继续执行
+        mret
+</code></pre>
+<h1 id="mit-6s081-lab-syscall-实验记录与核心代码剖析">MIT 6.S081 Lab: Syscall 实验记录与核心代码剖析</h1>
+<p>本次实验的核心目的是深入理解 xv6 操作系统的系统调用机制（System Call），并亲手实现两个新的系统调用：trace（系统调用追踪）和 sysinfo（系统状态信息收集）。</p>
+<h2 id="一-trace-系统调用追踪-moderate">一、 Trace: 系统调用追踪 (Moderate)</h2>
+<p><code>trace </code>的核心需求是实现一个系统调用 <code>trace(mask)</code>。根据传入的掩码<code>（mask）</code>，内核需要在后续每次执行相应的系统调用时，打印出追踪信息。</p>
+<ol>
+<li>
+<p>注册系统调用<br>
+要在 xv6 中新增一个系统调用，需要在内核态与用户态的边界处完成全套注册流程。具体修改点如下：<br>
+<code>kernel/syscall.h</code>：新增系统调用号 <code>#define SYS_trace 22</code>。<br>
+<code>kernel/syscall.c</code>：声明 <code>extern uint64 sys_trace(void);</code>，并在 syscalls 函数指针数组中增加映射 <code>[SYS_trace] sys_trace</code>。<br>
+<code>user/user.h</code>：添加用户态接口声明 <code>int trace(int);</code>。<br>
+<code>user/usys.pl</code>：添加汇编入口跳板 <code>entry(&quot;trace&quot;);</code>。</p>
+</li>
+<li>
+<p>状态保存与继承<br>
+为了让系统调用知道当前进程需要追踪哪些调用，需要在进程控制块<code>（PCB）</code>中增加一个状态记录：<br>
+在<code>kernel/proc.h</code>的<code>struct proc</code>中新增成员变量 <code>int trace_mask</code>;。<br>
+关键点：子进程需要继承父进程的追踪状态。因此在 kernel/proc.c 的 fork() 函数中，拷贝进程状态时需加入：<code>np-&gt;trace_mask = p-&gt;trace_mask;</code></p>
+</li>
+<li>
+<p>核心逻辑实现<br>
+在<code>kernel/sysproc.c</code>中实现真正的内核处理函数。通过<code>argint</code>获取用户态传入的参数，并保存到当前进程结构体中：</p>
+</li>
+</ol>
+<pre><code class="language-c">uint64
+sys_trace(void)
+{
+  int mask;
+  // 获取第一个参数（掩码）
+  if(argint(0, &amp;mask) &lt; 0)
+    return -1;
+  // 将掩码打上进程烙印
+  myproc()-&gt;trace_mask = mask;
+  return 0;
+}
+</code></pre>
+<p>最后，在系统调用的统一入口 <code>syscall()</code>（位于 <code>kernel/syscall.c</code>）中“埋点”。利用位运算 <code>(p-&gt;trace_mask &gt;&gt; num) &amp; 1 </code>判断当前系统调用号是否在追踪掩码内：</p>
+<pre><code class="language-C">void
+syscall(void)
+{
+  int num;
+  struct proc *p = myproc();
+  num = p-&gt;trapframe-&gt;a7; // a7 寄存器保存着系统调用号
+  if(num &gt; 0 &amp;&amp; num &lt; NELEM(syscalls) &amp;&amp; syscalls[num]) {
+    p-&gt;trapframe-&gt;a0 = syscalls[num](); // 执行真正的系统调用
+    // 如果掩码命中，打印追踪信息
+    if((p-&gt;trace_mask &gt;&gt; num) &amp; 1) {
+      // 需自行补充 sys_str 字符串数组以映射调用名称
+      printf(&quot;%d: syscall %s -&gt; %d\n&quot;, p-&gt;pid, sys_str[num], p-&gt;trapframe-&gt;a0);
+    }
+  } else {
+    printf(&quot;%d %s: unknown sys call %d\n&quot;, p-&gt;pid, p-&gt;name, num);
+    p-&gt;trapframe-&gt;a0 = -1;
+  }
+}
+</code></pre>
+<h2 id="二-sysinfo-系统信息收集-moderate">二、 Sysinfo: 系统信息收集 (Moderate)</h2>
+<p><code>sysinfo</code> 系统调用要求我们统计当前 xv6 系统的两个关键指标：剩余物理内存大小和活跃进程数，并将结果安全地拷贝回用户空间。</p>
+<h3 id="1-统计剩余内存大小-freemem">1. 统计剩余内存大小 (freemem)</h3>
+<p>xv6 的物理内存分配器（在 kernel/kalloc.c 中）使用一个单向链表 kmem.freelist 来维护所有的空闲内存页。只需加锁并遍历该链表，将节点数乘以页大小（PGSIZE）即可得出剩余字节数：</p>
+<pre><code class="language-C">uint64 freemem(void)
+{
+  struct run *r;
+  uint64 freeNum = 0;
+  acquire(&amp;kmem.lock);
+  r = kmem.freelist; // 获取空闲链表头
+  while(r) {
+    freeNum += PGSIZE; // 每遍历一个节点，增加一页的字节数 (4096)
+    r = r-&gt;next;       // 游标后移
+  }
+  release(&amp;kmem.lock);
+  return freeNum;
+}
+</code></pre>
+<h3 id="2-统计活跃进程数-num_proc">2. 统计活跃进程数 (num_proc)</h3>
+<p>系统的所有进程结构体都预分配在一个全局数组 proc[NPROC] 中（见 kernel/proc.c）。<br>
+遍历该数组，只要进程的状态 p-&gt;state 不是 UNUSED，就说明该坑位被占用（无论是在运行、睡眠还是就绪状态）：</p>
+<pre><code class="language-C">uint64 num_proc()
+{
+  uint64 procNum = 0;
+  struct proc *p;
+  for(p = proc; p &lt; &amp;proc[NPROC]; p++) {
+    acquire(&amp;p-&gt;lock);
+    // 只要不是 UNUSED，就计入活跃进程
+    if(p-&gt;state != UNUSED) {
+      procNum++;
+    } 
+    release(&amp;p-&gt;lock);
+  }
+  return procNum;
+}
+</code></pre>
+<h3 id="3-跨越边界的数据搬运-sys_sysinfo">3. 跨越边界的数据搬运 (sys_sysinfo)</h3>
+<p>统计完数据后，需要将其组装进 struct sysinfo 结构体中。<br>
+由于内核页表与用户页表不同，内核绝不能直接使用 C 语言指针给用户空间赋值。必须借助 xv6 底层的 copyout 函数，安全地将数据搬运到用户指定的虚拟地址：</p>
+<pre><code class="language-C">#include &quot;kernel/sysinfo.h&quot;
+uint64
+sys_sysinfo(void)
+{
+  struct sysinfo info;
+  uint64 user_addr;
+  struct proc *p = myproc();
+  // 1. 获取用户传入的结构体收货地址（指针）
+  if (argaddr(0, &amp;user_addr) &lt; 0)
+    return -1;
+  // 2. 收集系统信息
+  extern uint64 freemem();
+  extern uint64 num_proc();
+  info.freemem = freemem();
+  info.nproc = num_proc();
+  // 3. 利用 copyout 安全拷贝数据回用户空间
+  if(copyout(p-&gt;pagetable, user_addr, (char *)&amp;info, sizeof(info)) &lt; 0)
+    return -1;
+  return 0; // 成功返回 0
+}
+</code></pre>
+<p>总结：<br>
+本次实验不仅巩固了对 C 语言位操作和链表遍历的基础掌控，更重要的是理清了 RISC-V 架构下内核态与用户态的内存隔离机制。无论是利用 trapframe 传递参数，还是通过 copyout 突破页表壁垒，都展示了底层系统设计的严谨性与巧妙性。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B">启动流程</a>
+<ul>
+<li><a href="#1-%E6%B1%87%E7%BC%96%E5%85%A5%E5%8F%A3-entrys%E5%A4%9A%E6%A0%B8%E6%A0%88%E5%88%9D%E5%A7%8B%E5%8C%96">1. 汇编入口 entry.S：多核栈初始化</a></li>
+<li><a href="#2-start-%E5%87%BD%E6%95%B0%E7%89%B9%E6%9D%83%E9%99%8D%E7%BA%A7%E4%B8%8E%E7%A1%AC%E4%BB%B6%E9%85%8D%E7%BD%AE">2. start() 函数：特权降级与硬件配置</a></li>
+<li><a href="#3-timerinit%E9%85%8D%E7%BD%AE%E7%B3%BB%E7%BB%9F%E5%BF%83%E8%B7%B3">3. timerinit()：配置系统心跳</a></li>
+<li><a href="#4-timervec%E6%97%B6%E9%92%9F%E4%B8%AD%E6%96%AD">4. timervec：时钟中断</a></li>
+</ul>
+</li>
+<li><a href="#mit-6s081-lab-syscall-%E5%AE%9E%E9%AA%8C%E8%AE%B0%E5%BD%95%E4%B8%8E%E6%A0%B8%E5%BF%83%E4%BB%A3%E7%A0%81%E5%89%96%E6%9E%90">MIT 6.S081 Lab: Syscall 实验记录与核心代码剖析</a>
+<ul>
+<li><a href="#%E4%B8%80-trace-%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8%E8%BF%BD%E8%B8%AA-moderate">一、 Trace: 系统调用追踪 (Moderate)</a></li>
+<li><a href="#%E4%BA%8C-sysinfo-%E7%B3%BB%E7%BB%9F%E4%BF%A1%E6%81%AF%E6%94%B6%E9%9B%86-moderate">二、 Sysinfo: 系统信息收集 (Moderate)</a>
+<ul>
+<li><a href="#1-%E7%BB%9F%E8%AE%A1%E5%89%A9%E4%BD%99%E5%86%85%E5%AD%98%E5%A4%A7%E5%B0%8F-freemem">1. 统计剩余内存大小 (freemem)</a></li>
+<li><a href="#2-%E7%BB%9F%E8%AE%A1%E6%B4%BB%E8%B7%83%E8%BF%9B%E7%A8%8B%E6%95%B0-num_proc">2. 统计活跃进程数 (num_proc)</a></li>
+<li><a href="#3-%E8%B7%A8%E8%B6%8A%E8%BE%B9%E7%95%8C%E7%9A%84%E6%95%B0%E6%8D%AE%E6%90%AC%E8%BF%90-sys_sysinfo">3. 跨越边界的数据搬运 (sys_sysinfo)</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6-shi-yan-0-huan-jing-da-jian/">
+              <h3 class="post-title">
+                xv6实验[0]-环境搭建
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

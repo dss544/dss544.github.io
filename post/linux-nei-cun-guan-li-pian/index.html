@@ -1,0 +1,504 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Linux内存管理篇 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Linux内存管理篇 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Linux 内存管理：PAGE_OFFSET 与空间划分
+在 Linux 内存管理中，系统通过 PAGE_OFFSET 宏来界定用户空间与内核空间的分界线。
+线性映射区（Direct Mapping Area）的大小，主要取决于 PAGE_..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Linux内存管理篇
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-05-25
+              </span>
+              <span>
+                12 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="linux-内存管理page_offset-与空间划分">Linux 内存管理：PAGE_OFFSET 与空间划分</h1>
+<p>在 Linux 内存管理中，系统通过 <code>PAGE_OFFSET</code> 宏来界定<strong>用户空间</strong>与<strong>内核空间</strong>的分界线。<br>
+线性映射区（Direct Mapping Area）的大小，主要取决于 <code>PAGE_OFFSET</code> 的设置以及物理内存的实际容量。为了保证内核能灵活分配非连续的物理内存，系统必须在内核空间顶部为 <code>vmalloc</code> 区域保留一定的空间（通常至少保留 240MB）。</p>
+<p>以下是两种常见的内存划分方案对比（32位linux系统）：</p>
+<h3 id="1-经典-3gb1gb-划分">1. 经典 3GB/1GB 划分</h3>
+<p>在这种模式下，虚拟地址空间（4GB）被划分为 3GB 用户空间 + 1GB 内核空间。</p>
+<ul>
+<li><strong>分界线 (<code>PAGE_OFFSET</code>)</strong>：<code>3GB</code> (0xC0000000)</li>
+<li><strong>线性映射区</strong>：<code>[3GB, 3GB + 784MB]</code><br>
+<em>(注：1024MB 内核空间 - 240MB vmalloc 保留 = 784MB)</em></li>
+</ul>
+<h3 id="2-均衡-2gb2gb-划分">2. 均衡 2GB/2GB 划分</h3>
+<p>在这种模式下，虚拟地址空间被对半划分，为内核提供更充裕的地址空间。</p>
+<ul>
+<li><strong>分界线 (<code>PAGE_OFFSET</code>)</strong>：<code>2GB</code> (0x80000000)</li>
+<li><strong>线性映射区</strong>：<code>[2GB, 2GB + 1808MB]</code><br>
+<em>(注：2048MB 内核空间 - 240MB vmalloc 保留 = 1808MB)</em></li>
+</ul>
+<blockquote>
+<p><strong>💡 核心总结</strong><br>
+无论采用哪种比例划分，内核空间的公式始终成立：<br>
+<code>内核虚拟地址空间 = 线性映射区 + vmalloc保留区（≥240MB）+ 其他保留区</code></p>
+</blockquote>
+<h3 id="3-深入探究vmalloc-区域的边界与隔离机制">3. 深入探究：vmalloc 区域的边界与隔离机制</h3>
+<p>在内核编程中，最常用的两个内存分配函数是 <code>kmalloc</code> 和 <code>vmalloc</code>。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">对比维度</th>
+<th style="text-align:left"><code>kmalloc</code></th>
+<th style="text-align:left"><code>vmalloc</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>底层依赖</strong></td>
+<td style="text-align:left">依赖 <strong>Slab 分配器</strong>（建立在伙伴系统之上）</td>
+<td style="text-align:left">直接依赖 <strong>伙伴系统 (Buddy System)</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>虚拟地址</strong></td>
+<td style="text-align:left"><strong>连续</strong></td>
+<td style="text-align:left"><strong>连续</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>物理地址</strong></td>
+<td style="text-align:left"><strong>绝对连续</strong></td>
+<td style="text-align:left"><strong>大概率不连续</strong>（由离散的物理页拼凑）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>分配区域</strong></td>
+<td style="text-align:left">线性映射区（Direct Mapping 区）</td>
+<td style="text-align:left"><code>vmalloc</code> 保留区（位于内核空间较高地址处）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>性能与速度</strong></td>
+<td style="text-align:left"><strong>极快 (<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span>)</strong>（直接返回地址，无需修改页表）</td>
+<td style="text-align:left"><strong>极慢</strong>（需寻找空闲物理页、修改页表、建立映射、刷新 TLB）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>分配大小</strong></td>
+<td style="text-align:left">适合<strong>小内存</strong>（通常 &lt; PAGE_SIZE，极限不超过伙伴系统分配最大空间(4MB)）</td>
+<td style="text-align:left">适合<strong>大内存</strong>(可达几十 MB 甚至上 GB) vmalloc区域最小240M</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>中断上下文</strong></td>
+<td style="text-align:left"><strong>支持</strong>（带 <code>GFP_ATOMIC</code> 标志可用于中断，不阻塞）</td>
+<td style="text-align:left"><strong>严禁在中断中使用</strong>（分配过程可能引发睡眠/阻塞）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>典型使用场景</strong></td>
+<td style="text-align:left">1. 硬件 DMA 缓冲区（必须物理连续）<br>2. 频繁申请/释放的核心数据结构（如 inode、task_struct）</td>
+<td style="text-align:left">1. 加载庞大的内核模块（驱动代码）<br>2. 分配超大的软件缓冲区（如巨大的网络/视频缓冲池）</td>
+</tr>
+</tbody>
+</table>
+<p>vmalloc只有用户申请的时候才回去做映射，它的工作流程，分配虚拟连续地址空间（遍历虚拟地址链表）根据内存大小从伙伴大小申请物理页帧，把物理页帧映射到虚拟地址空间，所以他自带阻塞属性，在使用<br>
+vmalloc时不需要像kmalloc一样添加标志位，代码如下。</p>
+<pre><code class="language-c">static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
+				 pgprot_t prot, int node)
+{
+	const int order = 0;
+	struct page **pages;
+	unsigned int nr_pages, array_size, i;
+	/* 强制加上__GFP_ZERO确保分配内存为0 */
+	const gfp_t nested_gfp = (gfp_mask &amp; GFP_RECLAIM_MASK) | __GFP_ZERO;
+	const gfp_t alloc_mask = gfp_mask | __GFP_NOWARN;
+	/* 计算要申请4kb数量 */
+	nr_pages = get_vm_area_size(area) &gt;&gt; PAGE_SHIFT;
+	array_size = (nr_pages * sizeof(struct page *));
+
+	area-&gt;nr_pages = nr_pages;
+	/* Please note that the recursion is strictly bounded. */
+	/* 要分配数组太大 连续空间放不下 只能递归申请                */
+	if (array_size &gt; PAGE_SIZE) {
+		pages = __vmalloc_node(array_size, 1, nested_gfp|__GFP_HIGHMEM,
+				PAGE_KERNEL, node, area-&gt;caller);
+		area-&gt;flags |= VM_VPAGES;
+	} else {
+		/* 数组比较小直接走kmalloc */
+		pages = kmalloc_node(array_size, nested_gfp, node);
+	}
+	area-&gt;pages = pages;
+	if (!area-&gt;pages) {
+		/* 申请失败了 */
+		remove_vm_area(area-&gt;addr);
+		kfree(area);
+		return NULL;
+	}
+	for (i = 0; i &lt; area-&gt;nr_pages; i++) {
+		struct page *page;
+
+		if (node == NUMA_NO_NODE)
+			/* 不指定节点分配 */
+			page = alloc_page(alloc_mask);
+		else
+			/* 指定节点分配 */
+			page = alloc_pages_node(node, alloc_mask, order);
+
+		if (unlikely(!page)) {
+			/* Successfully allocated i pages, free them in __vunmap() */
+			area-&gt;nr_pages = i;
+			goto fail;
+		}
+		/* 申请到的单页指针存进数组 */
+		area-&gt;pages[i] = page;
+		/* 如果允许睡眠就调用内核调度器  */
+		if (gfp_mask &amp; __GFP_WAIT)
+			cond_resched();
+	}
+	/* 映射物理地址到虚拟地址 */
+	if (map_vm_area(area, prot, pages))
+		goto fail;
+	return area-&gt;addr;
+
+fail:
+	warn_alloc_failed(gfp_mask, order,
+			  &quot;vmalloc: allocation failure, allocated %ld of %ld bytes\n&quot;,
+			  (area-&gt;nr_pages*PAGE_SIZE), area-&gt;size);
+	vfree(area-&gt;addr);
+	return NULL;
+}
+</code></pre>
+<p>通过对比kmalloc和vmalloc，观察虚拟地址和实际物理地址区别。</p>
+<pre><code class="language-c">#include &lt;linux/module.h&gt;
+#include &lt;linux/kernel.h&gt;
+#include &lt;linux/init.h&gt;
+#include &lt;linux/slab.h&gt;    /* kmalloc */
+#include &lt;linux/vmalloc.h&gt; /* vmalloc */
+#include &lt;linux/mm.h&gt;      /* vmalloc_to_page */
+static unsigned char *p;
+static int __init hello_init(void)
+{
+    unsigned int phy_addr;
+    unsigned int pfn;
+    int i;
+    p = vmalloc(5 * 1024 * 1024);
+    if(!p)
+    {
+        printk(&quot;error vmalloc!\n&quot;);
+    }
+    else
+    {
+        for (i = 0; i &lt; 100; ++i)
+        {
+            /* vmalloc虚拟地址和物理地址是非线性 不能用virt_to_phys */
+            pfn = vmalloc_to_pfn(p);
+            phy_addr = (pfn &lt;&lt; 12) | ((unsigned int)p &amp; 0xfff);
+            printk(&quot;virt_addr: %x pfn: %x phy_addr: %x\n&quot;,
+                                (unsigned int)p, pfn, phy_addr);
+            p += 4096;
+        }
+    }
+    return 0;
+}
+static void __exit hello_exit(void)
+{
+    vfree(p);
+}
+module_init(hello_init);
+module_exit(hello_exit);
+MODULE_LICENSE(&quot;GPL&quot;);
+MODULE_AUTHOR(&quot;Driver_Developer&quot;);
+MODULE_DESCRIPTION(&quot;A simple module to check kmalloc and vmalloc addresses&quot;);
+</code></pre>
+<p>程序运行结果如下，可以看到虚拟地址连续，物理地址不一定连续。<br>
+<img src="https://dss544.github.io/post-images/1779759312562.png" alt="" loading="lazy"></p>
+<p>使用kmalloc分配内存，注意不能超过伙伴系统最大分配内存大小（这里是4MB），或则加载驱动直接报错。代码如下：</p>
+<pre><code class="language-c">#include &lt;linux/module.h&gt;
+#include &lt;linux/kernel.h&gt;
+#include &lt;linux/init.h&gt;
+#include &lt;linux/slab.h&gt;    /* kmalloc */
+#include &lt;linux/vmalloc.h&gt; /* vmalloc */
+#include &lt;linux/mm.h&gt;      /* vmalloc_to_page */
+static unsigned char *p;
+static int __init hello_init(void)
+{
+    unsigned int phy_addr;
+    unsigned int pfn;
+    int i;
+    p = kmalloc(4 * 1024 * 1024, GFP_KERNEL);
+    if(!p)
+    {
+        printk(&quot;error vmalloc!\n&quot;);
+    }
+    else
+    {
+        for (i = 0; i &lt; 100; ++i)
+        {
+            // 物理地址
+            phy_addr = virt_to_phys(p);
+            // 物理页帧
+            pfn = phy_addr &gt;&gt; 12;           
+            printk(&quot;virt_addr: %x pfn: %x phy_addr: %x\n&quot;,
+                                (unsigned int)p, pfn, phy_addr);
+            p += 4096;
+        }
+    }
+    return 0;
+}
+
+static void __exit hello_exit(void)
+{
+    vfree(p);
+}
+module_init(hello_init);
+module_exit(hello_exit);
+MODULE_LICENSE(&quot;GPL&quot;);
+MODULE_AUTHOR(&quot;Driver_Developer&quot;);
+MODULE_DESCRIPTION(&quot;A simple module to check kmalloc and vmalloc addresses&quot;);
+</code></pre>
+<p>运行结果如下，虚拟地址物理地址均连续<br>
+<img src="https://dss544.github.io/post-images/1779760132798.png" alt="" loading="lazy"></p>
+<h1 id="1-核心理论arm32-两级页表与-4kb-小页映射-page-mapping">1. 核心理论：ARM32 两级页表与 4KB 小页映射 (Page Mapping)</h1>
+<p>在 ARM32 架构中，采用 4KB 小页映射时，硬件 MMU 使用两级页表结构：</p>
+<h2 id="一级页表-l1-pgd">一级页表 (L1 / PGD)</h2>
+<ul>
+<li>包含 4096 个表项</li>
+<li>负责覆盖 4GB 的虚拟地址空间</li>
+</ul>
+<h2 id="二级页表-l2-pte">二级页表 (L2 / PTE)</h2>
+<ul>
+<li>包含 256 个表项</li>
+<li>每个表项占 4 字节<br>
+因此整个二级页表大小刚好是：</li>
+</ul>
+<pre><code class="language-text">256 × 4B = 1KB
+</code></pre>
+<hr>
+<h1 id="2-精妙的标志位设计位复用">2. 精妙的标志位设计（位复用）</h1>
+<p>既然二级页表大小是 1KB，那么它在物理内存中的起始地址必定是：</p>
+<pre><code class="language-text">1KB 对齐
+</code></pre>
+<p>这意味着：</p>
+<pre><code class="language-text">二级页表基地址低 10 位天然全是 0
+</code></pre>
+<p>因此：</p>
+<ul>
+<li>一级页表项只需要高 22 位 <code>[31:10]</code><br>
+来指向二级页表的物理基址</li>
+<li>腾出来的低 10 位 <code>[9:0]</code><br>
+就可以用于存放属性标志位（Flags）<br>
+其中：</li>
+<li>最低 <code>[1:0]</code> 两位<br>
+表示当前表项的映射类型<br>
+例如：<br>
+| 位值 | 类型 | 说明 |<br>
+|---|---|---|<br>
+| <code>00</code> | Fault | 无效映射 / 缺页异常 |<br>
+| <code>01</code> | Table | 指向二级页表 |<br>
+| <code>10</code> | Section | 直接映射 1MB 段 |</li>
+</ul>
+<hr>
+<p>在代码：</p>
+<pre><code class="language-text">arch/arm/include/asm/pgtable-2level-hwdef.h
+</code></pre>
+<p>中，定义了一级页表和二级页表项的标志位。</p>
+<h2 id="一级页表-pmd-标志位">一级页表 PMD 标志位</h2>
+<pre><code class="language-c">#define PMD_TYPE_MASK   (_AT(pmdval_t, 3) &lt;&lt; 0)  // 掩码 0b11
+#define PMD_TYPE_FAULT  (_AT(pmdval_t, 0) &lt;&lt; 0)  // 00: 触发缺页异常 (Ignored/Fault)
+#define PMD_TYPE_TABLE  (_AT(pmdval_t, 1) &lt;&lt; 0)  // 01: 指向二级页表 (Page table)
+#define PMD_TYPE_SECT   (_AT(pmdval_t, 2) &lt;&lt; 0)  // 10: 段映射 (Section, 1MB 大页)
+</code></pre>
+<hr>
+<h2 id="二级页表-pte-标志位">二级页表 PTE 标志位</h2>
+<pre><code class="language-c">#define PTE_TYPE_SMALL  (_AT(pteval_t, 2) &lt;&lt; 0) // 10: 4KB 小页
+#define PTE_EXT_XN      (_AT(pteval_t, 1) &lt;&lt; 0) // XN: Execute Never（不可执行，防止缓冲区溢出攻击）
+#define PTE_BUFFERABLE  (_AT(pteval_t, 1) &lt;&lt; 2) // B: 允许 Write Buffer
+#define PTE_CACHEABLE   (_AT(pteval_t, 1) &lt;&lt; 3) // C: 允许 Cache 缓存
+</code></pre>
+<p>__get_free_pages() 和 kmalloc()只要看到标志位有ZONE_HIGHMEM就会立即拒绝，因为这两个都是要返回虚拟地址，而高端内存没有固定虚拟地址，所以会拒绝。只有alloc_pages() 才能分配高端内存，他返回的值一个指向page的页，要自己kmap映射才能使用。</p>
+<p>vmalloc可能会睡眠，指定标志位也没有<br>
+kfree里面有锁，不会睡眠。vfree会判断在不在中断，如果在中断就放在队列，不在就释放。所以也可以在中断使用。</p>
+<p>slab是由一个或多个连续物理内存页，被切割成许多大小完全一样的房间，每个房间放一类对象<br>
+linux内核在初始化的时候，就建立的一个大数组struct kmem_cache *kmalloc_caches[KMALLOC_SHIFT_HIGH + 1];</p>
+<pre><code class="language-c">cat /proc/slabinfo | grep kmalloc
+kmalloc-rcl-8k         0      0   8192    4    8 : tunables    0    0    0 : slabdata      0      0      0
+kmalloc-rcl-4k         0      0   4096    8    8 : tunables    0    0    0 : slabdata      0      0      0
+kmalloc-rcl-2k         0      0   2048   16    8 : tunables    0    0    0 : slabdata      0      0      0
+kmalloc-rcl-1k         0      0   1024   16    4 : tunables    0    0    0 : slabdata      0      0      0
+kmalloc-rcl-512        0      0    512   16    2 : tunables    0    0    0 : slabdata      0      0      0
+kmalloc-rcl-256        0      0    256   16    1 : tunables    0    0    0 : slabdata      0      0      0
+kmalloc-rcl-192        0      0    192   21    1 : tunables    0    0    0 : slabdata      0      0      0
+kmalloc-rcl-128       32     32    128   32    1 : tunables    0    0    0 : slabdata      1      1      0
+kmalloc-rcl-64        64     64     64   64    1 : tunables    0    0    0 : slabdata      1      1      0
+kmalloc-8k             8      8   8192    4    8 : tunables    0    0    0 : slabdata      2      2      0
+kmalloc-4k            16     16   4096    8    8 : tunables    0    0    0 : slabdata      2      2      0
+kmalloc-2k            32     32   2048   16    8 : tunables    0    0    0 : slabdata      2      2      0
+kmalloc-1k           176    176   1024   16    4 : tunables    0    0    0 : slabdata     11     11      0
+kmalloc-512          432    432    512   16    2 : tunables    0    0    0 : slabdata     27     27      0
+kmalloc-256          192    192    256   16    1 : tunables    0    0    0 : slabdata     12     12      0
+kmalloc-192          105    105    192   21    1 : tunables    0    0    0 : slabdata      5      5      0
+kmalloc-128          928    928    128   32    1 : tunables    0    0    0 : slabdata     29     29      0
+kmalloc-64          4608   4608     64   64    1 : tunables    0    0    0 : slabdata     72     72      0
+</code></pre>
+<p>kmap是用于映射一个page到内核地址空间，高端低端内存都可以用，如果page是地段内存，就会返回该页的虚拟地址，如果位于高端内存，就建立永久映射，永久映射数量有限，所以要kunmap再不需要高端内存的时候。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#linux-%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86page_offset-%E4%B8%8E%E7%A9%BA%E9%97%B4%E5%88%92%E5%88%86">Linux 内存管理：PAGE_OFFSET 与空间划分</a><br>
+*
+<ul>
+<li><a href="#1-%E7%BB%8F%E5%85%B8-3gb1gb-%E5%88%92%E5%88%86">1. 经典 3GB/1GB 划分</a></li>
+<li><a href="#2-%E5%9D%87%E8%A1%A1-2gb2gb-%E5%88%92%E5%88%86">2. 均衡 2GB/2GB 划分</a></li>
+<li><a href="#3-%E6%B7%B1%E5%85%A5%E6%8E%A2%E7%A9%B6vmalloc-%E5%8C%BA%E5%9F%9F%E7%9A%84%E8%BE%B9%E7%95%8C%E4%B8%8E%E9%9A%94%E7%A6%BB%E6%9C%BA%E5%88%B6">3. 深入探究：vmalloc 区域的边界与隔离机制</a></li>
+</ul>
+</li>
+<li><a href="#1-%E6%A0%B8%E5%BF%83%E7%90%86%E8%AE%BAarm32-%E4%B8%A4%E7%BA%A7%E9%A1%B5%E8%A1%A8%E4%B8%8E-4kb-%E5%B0%8F%E9%A1%B5%E6%98%A0%E5%B0%84-page-mapping">1. 核心理论：ARM32 两级页表与 4KB 小页映射 (Page Mapping)</a>
+<ul>
+<li><a href="#%E4%B8%80%E7%BA%A7%E9%A1%B5%E8%A1%A8-l1-pgd">一级页表 (L1 / PGD)</a></li>
+<li><a href="#%E4%BA%8C%E7%BA%A7%E9%A1%B5%E8%A1%A8-l2-pte">二级页表 (L2 / PTE)</a></li>
+</ul>
+</li>
+<li><a href="#2-%E7%B2%BE%E5%A6%99%E7%9A%84%E6%A0%87%E5%BF%97%E4%BD%8D%E8%AE%BE%E8%AE%A1%E4%BD%8D%E5%A4%8D%E7%94%A8">2. 精妙的标志位设计（位复用）</a>
+<ul>
+<li><a href="#%E4%B8%80%E7%BA%A7%E9%A1%B5%E8%A1%A8-pmd-%E6%A0%87%E5%BF%97%E4%BD%8D">一级页表 PMD 标志位</a></li>
+<li><a href="#%E4%BA%8C%E7%BA%A7%E9%A1%B5%E8%A1%A8-pte-%E6%A0%87%E5%BF%97%E4%BD%8D">二级页表 PTE 标志位</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/hello-gridea/">
+              <h3 class="post-title">
+                Hello Gridea
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

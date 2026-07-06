@@ -1,0 +1,218 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xv6实验[0]-环境搭建 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="xv6实验[0]-环境搭建 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="xv6实验的官方网站为https://pdos.csail.mit.edu/6.S081/2021
+启动命令详解
+qemu-system-riscv64 -machine virt -bios none -kernel kernel/ker..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              xv6实验[0]-环境搭建
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-05
+              </span>
+              <span>
+                4 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>xv6实验的官方网站为<a href="https://pdos.csail.mit.edu/6.S081/2021">https://pdos.csail.mit.edu/6.S081/2021</a><br>
+启动命令详解</p>
+<pre><code class="language-c">qemu-system-riscv64 -machine virt -bios none -kernel kernel/kernel -m 128M -smp 3 -nographic -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+</code></pre>
+<p>qemu-system-riscv64: 告诉 QEMU 软件，我们要模拟的是 64 位 RISC-V 架构的 CPU。</p>
+<p>-machine virt: 指定我们要模拟的主板模型。virt 是一个通用的、虚拟的 RISC-V 开发板，专门为操作系统开发设计，没有真实的物理外设，但包含了 CPU、内存、中断控制器等核心逻辑。</p>
+<p>-bios none: 不使用任何 BIOS。因为 xv6 是一个教学内核，它非常“傲慢”，直接接管机器，不需要像电脑开机那样加载主板的 UEFI 或 BIOS。</p>
+<p>-kernel kernel/kernel: 加载核心心脏。它告诉 QEMU 把 xv6 内核文件（那个编译出来的 ELF 文件）加载到 RISC-V 内存的固定位置，并让 CPU 从内核的第一行代码开始执行。</p>
+<p>-m 128M: 配置内存。给这台虚拟计算机分配 128MB 的内存，这对于 xv6 来说已经非常宽裕了。</p>
+<p>-smp 3: 配置 CPU 核心数。模拟一个 3 核 的处理器（SMP 指对称多处理器）。这意味着 xv6 必须处理多核并发、锁竞争等复杂的场景。</p>
+<p>-nographic: 不需要图形界面。让所有的输出（串口输出）直接显示在当前的终端窗口里，而不是弹出一个新的图形窗口，这非常适合在 SSH 远程环境里调试。</p>
+<p>-drive file=fs.img,if=none,format=raw,id=x0: 装载硬盘。将你的 fs.img 镜像文件挂载为硬盘。id=x0 给这块盘起个名字叫 x0。</p>
+<p>-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0: 连接硬盘总线。将上面起名为 x0 的硬盘，通过 virtio 总线连接到虚拟主板上。virtio 是一种极其高效的虚拟化设备标准，让内核能通过内存映射（MMIO）快速读写硬盘。</p>
+<p>下面进行vscode调试环境搭建，参考博客<br>
+<a href="https://acmicpc.top/2024/02/08/MIT-6.S081-lab0-%E9%85%8D%E7%8E%AF%E5%A2%83/">https://acmicpc.top/2024/02/08/MIT-6.S081-lab0-配环境/</a></p>
+<p>在.vscode文件夹创建launch.json文件，输入如下内容，注意miDebuggerPath要和自己编译xv6的编译器一致</p>
+<pre><code class="language-c">{
+    &quot;version&quot;: &quot;0.2.0&quot;,
+    &quot;configurations&quot;: [
+        {
+            &quot;name&quot;: &quot;debug xv6&quot;,
+            &quot;type&quot;: &quot;cppdbg&quot;,
+            &quot;request&quot;: &quot;launch&quot;,
+            &quot;program&quot;: &quot;${workspaceFolder}/kernel/kernel&quot;,
+            &quot;args&quot;: [],
+            &quot;stopAtEntry&quot;: true,
+            &quot;cwd&quot;: &quot;${workspaceFolder}&quot;,
+            &quot;miDebuggerServerAddress&quot;: &quot;localhost:26000&quot;,
+            &quot;miDebuggerPath&quot;: &quot;/home/xiao/riscv/bin/riscv64-unknown-elf-gdb&quot;,
+            &quot;environment&quot;: [],
+            &quot;externalConsole&quot;: false,
+            &quot;MIMode&quot;: &quot;gdb&quot;,
+            &quot;setupCommands&quot;: [
+                {
+                    &quot;description&quot;: &quot;pretty printing&quot;,
+                    &quot;text&quot;: &quot;-enable-pretty-printing&quot;,
+                    &quot;ignoreFailures&quot;: true
+                }
+            ],
+            &quot;logging&quot;: {
+                // &quot;engineLogging&quot;: true,
+                // &quot;programOutput&quot;: true,
+            }
+        }
+    ]
+}
+</code></pre>
+<p>在qemu输入<code>make qemu-gdb CPUS=1</code>，打开vscode，按下f5。发现程序停留在<br>
+<img src="https://dss544.github.io/post-images/1780663486019.png" alt="" loading="lazy"><br>
+如果要调试用户区域代码，比如ls，需要在调试终端输入 <code>exec file ./user/_ls</code>，然后在xv6终端窗口输入ls即可看到程序执行到设置断点处，如下图所示，在左边可以看到寄存器和变量的值。<br>
+<img src="https://dss544.github.io/post-images/1780663698629.png" alt="" loading="lazy"><br>
+搭建好调试环境就可以开启xv6的学习之旅了！</p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/linux-nei-nei-cun-guan-li-ni-ming-ye-mian-que-ye-zhong-duan/">
+              <h3 class="post-title">
+                Linux内存管理-匿名页面缺页中断
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

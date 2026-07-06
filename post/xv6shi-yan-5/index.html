@@ -1,0 +1,476 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xv6实验[6]-实现mmap | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="xv6实验[6]-实现mmap | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="首先定义VMA结构体，并添加进proc结构体中
+#define VMA_MAX  16
+
+struct VMA {
+  int valid;            // 是否有效
+  uint64 addr;    // 映射起始地址
+  ..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              xv6实验[6]-实现mmap
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-07-01
+              </span>
+              <span>
+                12 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>首先定义VMA结构体，并添加进proc结构体中</p>
+<pre><code class="language-c">#define VMA_MAX  16
+
+struct VMA {
+  int valid;            // 是否有效
+  uint64 addr;    // 映射起始地址
+  int len;               // 长度
+  int prot;             // 权限
+  int flags;            // 标志位
+  int off;                // 偏移
+  struct file *f;    // 文件指针
+  uint64 mapcnt; 
+};
+
+struct proc {
+    ...
+    uint64 maxaddr;  
+    struct VMA vma[VMA_MAX];
+}
+</code></pre>
+<p>对于内存分配策略，在这里考虑使用堆区开始向下分配，堆区向下是没有分配过的空间，如果是栈区分配的话，就是和sbrk绑定在一起，还有懒分配机制。<br>
+<img src="https://dss544.github.io/post-images/1782877093121.png" alt="" loading="lazy"><br>
+所以在分配进程的函数allocproc里面添加代码：</p>
+<pre><code class="language-c">p-&gt;maxaddr = TRAPFRAME;
+</code></pre>
+<p>添加sys_mmap函数代码</p>
+<pre><code class="language-c">uint64
+sys_mmap(void)
+{
+  uint64 addr;
+  int len, prot, flags, fd, off;
+   // 获取用户传入mmap的函数
+   if( argaddr( 0 , &amp;addr ) &lt; 0 || argint( 1 , &amp;len ) &lt; 0 || argint( 2 , &amp;prot ) &lt; 0 
+   || argint( 3 , &amp;flags ) &lt; 0 || argint( 4 , &amp;fd ) &lt; 0 || argint( 5 , &amp;off ) &lt; 0 )
+     return -1;
+    struct VMA *vp;
+    struct proc *p = myproc();
+    struct file *f;
+    // 如果传入的文件描述符无效 直接return -1
+    if (fd &lt; 0 || fd &gt;= NOFILE || (f = p-&gt;ofile[fd]) == 0) return -1;
+    len = PGROUNDUP(len);
+    // MAP_SHARED表示用户修改内容最后要回写到磁盘
+    if ((flags == MAP_SHARED) &amp;&amp; (f-&gt;writable == 0) &amp;&amp; (prot&amp;PROT_WRITE))
+      return -1;
+    int idx = 0;
+    // 找到该进程的一块空闲的vma，最多16个
+    for (; idx &lt; VMA_MAX; idx++)
+    {
+      if (!p-&gt;vma[idx].valid) break;
+    }
+    if (idx == VMA_MAX) panic(&quot;no empty vma field&quot;);
+    vp = &amp;p-&gt;vma[idx];
+    vp-&gt;valid = 1;
+    // 分配虚拟地址
+    vp-&gt;addr = (p-&gt;maxaddr -= len);
+    vp-&gt;len = len;
+    vp-&gt;flags = flags;
+    vp-&gt;off = off;
+    vp-&gt;prot = prot;
+    vp-&gt;f = f;
+    // 增加文件引用
+    filedup(f);
+    return vp-&gt;addr;
+}
+</code></pre>
+<p>添加sys_munmap代码</p>
+<pre><code class="language-c">uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  // 1. 获取并解析来自用户态的系统调用参数
+  // argaddr(0, &amp;addr): 获取第一个参数（释放内存的起始虚拟地址）
+  // argint(1, &amp;length): 获取第二个参数（释放内存的字节长度）
+  // 若获取参数失败，则直接返回错误码 -1
+  if ((argaddr(0, &amp;addr) &lt; 0) || (argint(1, &amp;length) &lt; 0)) 
+    return -1;
+  struct proc *p = myproc();
+  // 2. 向上页对齐（4096字节对齐）
+  // 用户传入的释放长度可能不是页大小的整数倍，这里向上规整到页边界，以确保按页释放的正确性
+  length = PGROUNDUP(length);
+  struct VMA *vp = 0;
+  // 3. 寻找与指定内存释放区间 [addr, addr + length] 匹配的 VMA 结构
+  for (int i = 0; i &lt; VMA_MAX; i++)
+  {
+    // 条件判断：
+    // a) vma 槽位必须是有效的 (valid == 1)
+    // b) 用户请求的起始地址 `addr` 必须在 VMA 范围内
+    // c) 释放区域的右边界 `addr + length` 必须不超过当前 VMA 的结束边界
+    if (p-&gt;vma[i].valid &amp;&amp; addr &gt;= p-&gt;vma[i].addr 
+        &amp;&amp; (addr + length) &lt;= (p-&gt;vma[i].addr + p-&gt;vma[i].len))
+    {
+      vp = &amp;p-&gt;vma[i];
+      break; // 找到了完全覆盖请求区间的 VMA，跳出循环
+    }
+  }
+  // 如果遍历完 16 个槽位都没有找到匹配的有效 VMA，说明请求非法，返回错误
+  if (vp == 0) return 
+  // 4. 按页（PGSIZE = 4096）遍历请求释放的虚拟地址区间
+  for (uint64 va = addr; va &lt; addr + length; va += PGSIZE)
+  {
+    // 【核心机制：懒加载判断】
+    // 通过 walkaddr 在进程的页表中查找该虚拟地址 `va`。
+    // 如果返回 0，说明这个页处于 &quot;Lazy (懒分配)&quot; 状态：即虽然 mmap 声称拥有这块虚拟地址，
+    // 但程序在运行期间从未读写过它，因而页表里并未实际分配并映射物理页。
+    // 只有非 0 时（已经分配了真实的物理页），才需要进行写回与注销操作。
+    if (walkaddr(p-&gt;pagetable, va) != 0)
+    {
+      // 【共享映射写回机制 (MAP_SHARED)】
+      // 如果映射标志为 MAP_SHARED，说明修改必须同步到磁盘，则需要将该物理页内容写回文件
+      if (vp-&gt;flags == MAP_SHARED)
+      {
+        // 计算当前要写回的页在文件中的绝对字节偏移量：
+        // 相对偏移 = va - vp-&gt;addr (当前地址到映射起点的距离)
+        // 绝对偏移 = vma初始偏移 (vp-&gt;off) + 相对偏移
+        uint64 file_offset = vp-&gt;off + (va - vp-&gt;addr);
+        // 启动文件系统日志事务（必须成对出现，保证断电等异常时文件系统的一致性）
+        begin_op();
+        // 锁定该文件的 inode 节点，防止并发读写引发竞态冲突
+        ilock(vp-&gt;f-&gt;ip);
+        // 调用 writei 向文件写入数据：
+        // 参数2 (user_src = 1)：代表数据源 `va` 是一个用户态虚拟地址，writei 会通过页表安全地复制它
+        // 参数3 (va)：作为数据源的虚拟内存首地址
+        // 参数4 (file_offset)：待写入文件的目标绝对偏移量
+        // 参数5 (PGSIZE)：本次写入一个页面的大小（4096字节）
+        writei(vp-&gt;f-&gt;ip, 1, va, file_offset, PGSIZE);
+        // 解锁 inode 节点
+        iunlock(vp-&gt;f-&gt;ip);
+        // 结束文件系统日志事务
+        end_op();
+      }
+      // 【物理内存回收与卸载】
+      // 从进程的用户页表中解除该页面的映射，并回收其所占用的物理页。
+      // 参数 3 (npages = 1)：说明本次解除 1 个页面
+      // 参数 4 (do_free = 1)：说明解除映射后，要立即通过 kfree 归还这块物理内存给系统内核
+      uvmunmap(p-&gt;pagetable, va, 1, 1);
+    }
+  }
+  // 5. 更新及调整当前 VMA 的状态（处理部分卸载和完全卸载）
+  // 情况 A: 恰好完全卸载该 VMA 区间
+  if (addr == vp-&gt;addr &amp;&amp; length == vp-&gt;len) 
+  {
+    // 调用 fileclose 递减系统对应的文件引用计数。当计数降为0时，会自动安全释放文件描述符
+    fileclose(vp-&gt;f);
+    // 标记当前 VMA 槽位为空闲，可以被后续的 mmap 复用
+    vp-&gt;valid = 0;
+  }
+  // 情况 B: 卸载了 VMA 的头部（从起点开始的一段区间）
+  else if(addr == vp-&gt;addr)
+  {
+    vp-&gt;addr += length; // 虚拟内存起始地址往后移动
+    vp-&gt;len -= length;  // 总长度扣减
+    vp-&gt;off += length;  // 对应文件偏移量同步往后推，确保下次缺页时读对位置
+  }
+  // 情况 C: 卸载了 VMA 的尾部（一直释放到 VMA 的终点）
+  else if (addr + length == vp-&gt;addr + vp-&gt;len)
+  {
+    vp-&gt;len -= length;  // 起始地址和偏移量不需要变，仅扣减总体长度即可
+  }
+  return 0; // 成功执行，返回 0
+}
+</code></pre>
+<p>添加usertrap函数</p>
+<pre><code class="language-c">void
+usertrap(void)
+{
+    ...
+    // 捕获页面错误（Page Fault）：
+  // scause == 13 代表 Load Page Fault（读数据时缺页）
+  // scause == 15 代表 Store Page Fault（写数据时缺页）
+  else if(r_scause() == 13 || r_scause() == 15)
+  {
+    // 1. 获取触发缺页的精确虚拟地址（来自 stval 寄存器）
+    // 比如用户访问了 0x3FFFF008，但这一页还没分配物理内存，就会卡在这里
+    uint64 fault_addr = r_stval(); 
+    struct VMA *vp = 0;
+    
+    // 2. 遍历当前进程的所有 VMA，检查这个缺页地址是不是落在了某个通过 mmap 映射的合法区域内
+    for (int i = 0; i &lt; VMA_MAX; i++)
+    {
+      if( p-&gt;vma[i].valid == 1 &amp;&amp; p-&gt;vma[i].addr &lt;= fault_addr  
+          &amp;&amp; fault_addr &lt; p-&gt;vma[i].addr + p-&gt;vma[i].len )
+      {
+        vp = &amp;p-&gt;vma[i]; // 找到了对应的 VMA，说明这次缺页是合法的 mmap 访问
+        break;
+      }
+    }
+    
+    // 3. 如果地址合法（找到了对应的 VMA）
+    if (vp != 0)
+    {
+        // 将引发缺页的精确地址向下对齐到页边界（4096的倍数）。
+        // 因为操作系统的内存分配和页表映射（mappages）必须以一页（4096字节）为基本单位。
+        uint64 aligned_addr = PGROUNDDOWN(fault_addr);
+
+        // 4. 从内核的物理内存分配器中申请一个真实的物理页（4096 字节）
+        uint64 mem = (uint64) kalloc();
+        if(mem == 0)
+        {
+          // 如果系统物理内存耗尽（kalloc失败），无法分配新页，只能无奈将进程标记为死亡（killed）
+          p-&gt;killed = 1;
+        }
+        else
+        {
+          // 5. 内存分配成功，先将这块新的物理内存清零，防止残留的历史敏感数据泄露给用户态
+          memset((void *)mem, 0, PGSIZE);
+
+          // 6. 准备从文件中读取这一页的数据
+          // 锁定该文件的 inode，防止其他进程并发修改该文件，确保读取时的数据一致性
+          ilock(vp-&gt;f-&gt;ip);
+          // 计算当前缺页的这一页，对应在文件中的绝对字节偏移量：
+          // 文件绝对偏移 = VMA初始偏移量(vp-&gt;off) + (当前页虚拟地址 - VMA起始虚拟地址)
+          uint64 file_offset = vp-&gt;off + (aligned_addr - vp-&gt;addr);
+          // 调用 readi 读取文件内容到新分配的物理页中：
+          // 参数2 (0)：表示目标地址 `mem` 是一个内核物理地址，而不是用户态虚拟地址
+          // 参数3 (mem)：读取到的文件数据存放的物理内存首地址
+          // 参数4 (file_offset)：从文件的该偏移量处开始读取
+          // 参数5 (PGSIZE)：固定读取一页的大小（4096字节）
+          readi(vp-&gt;f-&gt;ip, 0, mem, file_offset, PGSIZE);
+          // 读取完毕，立刻解锁 inode，释放文件锁
+          iunlock(vp-&gt;f-&gt;ip);
+          // 7. 将这块填充了文件数据的物理页 `mem`，映射到用户的虚拟地址 `aligned_addr` 上
+          // 权限位解释：
+          // PTE_U: 允许用户态程序访问
+          // PTE_V: 标记该页表项有效
+          // (vp-&gt;prot &lt;&lt; 1): 巧妙的位移。VMA中的 PROT_READ(1)/PROT_WRITE(2) 刚好左移一位
+          // 就能对齐到 RISC-V 页表项的 PTE_R(2) 和 PTE_W(4) 权限位。
+          if(mappages(p-&gt;pagetable, aligned_addr, PGSIZE, mem, PTE_U | PTE_V | (vp-&gt;prot &lt;&lt; 1)) != 0)
+          {
+            // 如果由于某种原因（如多级页表分配失败）导致映射失败：
+            // 必须把刚刚分配的物理页释放掉（防止内存泄漏），并杀掉当前进程
+            kfree((void*)mem); 
+            p-&gt;killed = 1;
+          }
+        }
+    }
+    // 3b. 如果遍历完 VMA 发现缺页地址不属于任何一个 mmap 区域
+    else
+    {
+      // 说明这是一次彻头彻尾的非法内存越界访问（比如野指针乱指）
+      // 打印错误日志，并直接枪毙进程（p-&gt;killed = 1）
+      printf(&quot;usertrap(): unexpected scause %p pid=%d\n&quot;, r_scause(), p-&gt;pid);
+      printf(&quot;            sepc=%p stval=%p\n&quot;, r_sepc(), r_stval());
+      p-&gt;killed = 1;
+    }
+  }
+    ...
+}
+</code></pre>
+<p>在fork函数结尾里面添加子进程的复制内容</p>
+<pre><code class="language-c">int
+fork(void){
+    ...
+    acquire(&amp;np-&gt;lock);
+    np-&gt;state = RUNNABLE;
+    np-&gt;maxaddr = p-&gt;maxaddr;
+    for (int i = 0; i &lt; VMA_MAX; ++i)
+    {
+        if (p-&gt;vma[i].valid)
+        {
+            filedup(p-&gt;vma[i].f);
+            memmove(&amp;np-&gt;vma[i], &amp;p-&gt;vma[i], sizeof(struct VMA));
+        }
+    }
+    release(&amp;np-&gt;lock);
+    return pid;
+}
+</code></pre>
+<p>在exit函数开头添加</p>
+<pre><code class="language-c">void exit(int status)
+{
+  struct proc *p = myproc();
+  if(p == initproc)
+    panic(&quot;init exiting&quot;);
+
+  for (int i = 0; i &lt; VMA_MAX; i++)
+  {
+    if (p-&gt;vma[i].valid == 1)
+    {
+      struct VMA* vp = &amp;p-&gt;vma[i];
+      for (uint64 addr = vp-&gt;addr; addr &lt; vp-&gt;addr+vp-&gt;len; addr+=PGSIZE)
+      {
+        if (walkaddr(p-&gt;pagetable, addr) != 0)
+        {
+          if (vp-&gt;flags == MAP_SHARED)
+          {
+              uint64 file_offset = vp-&gt;off + (addr - vp-&gt;addr);
+            
+            begin_op(); // 开启文件系统事务（重要！）
+            ilock(vp-&gt;f-&gt;ip);
+            
+            // 使用 writei 写回磁盘
+            writei(vp-&gt;f-&gt;ip, 1, addr, file_offset, PGSIZE);
+            
+            iunlock(vp-&gt;f-&gt;ip);
+            end_op();   // 结束事务
+          }
+          uvmunmap(p-&gt;pagetable, addr, 1, 1);
+        }
+      }
+      
+    }
+  }
+    ...
+}
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6-wang-luo/">
+              <h3 class="post-title">
+                xv6网络
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

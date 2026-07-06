@@ -1,0 +1,376 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xv6实验[4]-文件系统 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="xv6实验[4]-文件系统 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="xv6的文件系统分为7层，每一层都为上层提供更高阶的抽象，它们分别是：
++--------------------------------------------+
+|        第 7 层：文件描述符层 (File Descripto..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              xv6实验[4]-文件系统
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-21
+              </span>
+              <span>
+                10 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>xv6的文件系统分为7层，每一层都为上层提供更高阶的抽象，它们分别是：<br>
++--------------------------------------------+<br>
+|        第 7 层：文件描述符层 (File Descriptor) |  &lt;-- 用户直接交互的接口 (fd)<br>
++--------------------------------------------+<br>
+|        第 6 层：路径名层 (Pathname)          |  &lt;-- 解析类似 /a/b/c 的多级路径<br>
++--------------------------------------------+<br>
+|        第 5 层：目录层 (Directory)           |  &lt;-- 将文件名映射为 Inode 编号<br>
++--------------------------------------------+<br>
+|        第 4 层：Inode 层 (Inode)            |  &lt;-- 提供单一文件抽象，管理元数据与块<br>
++--------------------------------------------+<br>
+|        第 3 层：日志层 (Logging)            |  &lt;-- 事务机制，保证崩溃恢复的原子性<br>
++--------------------------------------------+<br>
+|        第 2 层：块缓冲层 (Buffer Cache)      |  &lt;-- 缓存磁盘块，同步并发访问<br>
++--------------------------------------------+<br>
+|        第 1 层：磁盘/硬件层 (Disk)          |  &lt;-- 最底层的物理扇区读写<br>
++--------------------------------------------+<br>
+其中，每一层各司其职，核心功能如下：</p>
+<p><strong>1. 磁盘/硬件层 (Disk)</strong><br>
+负责直接与虚拟化硬件（如 QEMU 中的 VirtIO 磁盘驱动）打交道，以物理扇区 (Sector) 为单位对存储设备进行原始的读取和写入。它完全不关心什么是文件、什么是目录，只认磁盘地址。</p>
+<p><strong>2. 块缓冲层 (Buffer Cache / Bcache)</strong><br>
+有两个核心目的：缓存（Caching）与同步（Synchronization）。<br>
+为了减少慢速的磁盘 I/O，它将频繁访问的磁盘块缓存在内存中；<br>
+同时，它为每个缓存块分配一把锁，确保在多核并发环境下，同一时间只有一个内核线程能够修改某个磁盘块，防止数据被改烂。</p>
+<p><strong>3. 日志层 (Logging)</strong><br>
+专门用来进行崩溃恢复（Crash Recovery）。它引入了数据库中“事务（Transaction）”的概念。当上层要同时修改多个磁盘块时（比如创建文件），日志层会把这些修改先记录在一个特殊的日志区。如果系统在中途突然断电崩溃，重启时内核可以通过重放日志，确保整个操作“要么全部成功，要么全部撤销”，绝对不会在磁盘上留下半对半错的脏数据。</p>
+<p><strong>4. Inode 层 (Inode)</strong><br>
+提供了单一文件的抽象。在这一层，每个文件都由一个被称为 inode（索引节点）的物理结构表示。inode 里面记录了文件的元数据（如文件类型、大小、物理链接数 nlink），以及一组物理块号数组（指向数据真正存放在磁盘的哪些块）。它还负责向内核提供文件的读写接口（readi/writei）。</p>
+<p><strong>5. 目录层 (Directory)</strong><br>
+实现了文件夹/目录的功能。在 xv6 中，目录本质上是一种特殊类型的 Inode，它的内容不是普通文本，而是一行行的目录项（Directory Entries）。每个目录项极其简单，只包含两个东西：【文件名】和【Inode 编号 (inum)】。这一层的作用就是通过文件名，查表找到对应的 Inode 身份证号。</p>
+<p><strong>6. 路径名层 (Pathname)</strong><br>
+提供层级化的路径解析。它实现了像 sys_open 里的路径查找功能（核心函数为 namei）。当你给它一个长路径（如 /usr/rtm/xv6/fs.c）时，路径名层会像“剥洋葱”一样，从根目录开始递归地一层层解析目录，直到揪出最终那个文件的 Inode 指针。</p>
+<p><strong>7. 文件描述符层 (File Descriptor)</strong><br>
+文件系统的最高统治者与大门，直接对接应用层的系统调用（如 open、read、write、close）。它把底层的各种资源（无论是真正的磁盘文件、控制台设备文件，还是内存里的管道 Pipe），统一抽象成了进程账本里一个个小小的整数索引——文件描述符 (fd)。这实现了 Unix 经典的“一切皆文件”的最高设计哲学，极大地简化了应用层程序员的开发难度。</p>
+<h1 id="large-files">Large files</h1>
+<p>这一个实验是要使XV6支持更大的文件。原始XV6中的文件块号dinode.addr是使用一个大小为12的直接块表以及一个大小为256的一级块表，即文件最大为12+256块。可以通过将一个直接块表中的项替换为一个二级块表来使系统支持大小为11+256+256*256个块的文件。<br>
+首先修改对应宏</p>
+<pre><code class="language-c">#define NDIRECT 11
+#define NINDIRECT (BSIZE / sizeof(uint))
+#define MAXFILE (NDIRECT + NINDIRECT + NINDIRECT*NINDIRECT)
+struct dinode {
+  ...
+  uint addrs[NDIRECT+2]; 
+};
+struct inode {
+  ...
+  uint addrs[NDIRECT+2];
+};
+</code></pre>
+<p>之后修改bmap函数，该函数的功能是将文件的<strong>逻辑块号</strong>映射为磁盘的<strong>物理块号</strong>。在程序员看来文件是一个连续的字节流，比如一个4KB文件，被划分为4个块，文件块 0, 块 1, 块 2, 块 3）。这叫逻辑块号 (bn)。但是，在磁盘物理层，这 4 个块在磁盘上可能根本不是连续存放的（可能块 0 在磁盘的第 500 号扇区，块 1 跑到第 800 号扇区去了）。bmap 的存在，就是为了遮蔽这种物理磁盘的碎片化和复杂性。它对上层宣称：“你只管传给我文件的第N个块，我保证帮你定位到它在磁盘上的绝对物理地址。”</p>
+<pre><code class="language-c">static uint
+bmap(struct inode *ip, uint bn)
+{
+        ...
+    // ==========================================
+    // 阶段 1：直接索引块查找 (0 ~ NDIRECT-1)
+    // ==========================================
+  if(bn &lt; NDIRECT){
+        ...
+  }
+  // ==========================================
+  // 阶段 2：一级间接索引块查找 (0 ~ NINDIRECT-1)
+  // ==========================================
+  bn -= NDIRECT;
+
+  if(bn &lt; NINDIRECT){
+        ...
+  }
+    // ==========================================
+    // 阶段 3：二级间接索引块查找 (0 ~ NINDIRECT*NINDIRECT - 1)
+    // ==========================================
+  bn -= NINDIRECT;
+  uint indirect_idx, final_offset;
+
+  if (bn &lt; NINDIRECT * NINDIRECT)
+  {
+    // indirect_idx: 代表去二级块里的第几个“一级块槽位”去找
+    // final_offset: 代表去最终的一级块里的第几个“数据块槽位”去读
+    indirect_idx = (bn/ NINDIRECT);
+    final_offset = (bn % NINDIRECT);
+    // 【第一层套娃】检查并获取“二级间接块”本身的物理地址
+    if((addr = ip-&gt;addrs[NDIRECT+1]) == 0)
+      ip-&gt;addrs[NDIRECT+1] = addr = balloc(ip-&gt;dev);
+
+    bp = bread(ip-&gt;dev, addr);
+    a = (uint*)bp-&gt;data;
+    // 【第二层套娃】读取二级间接块，寻找对应的一级间接块地址
+    if ((addr = a[indirect_idx]) == 0)
+    {
+      // 如果这个分支下的一级索引块还没建，现场动态向磁盘申请一个索引块
+      a[indirect_idx] = addr = balloc(ip-&gt;dev);
+      // 记录修改二级块的日志
+      log_write(bp);
+    }
+    brelse(bp);
+
+    bp = bread(ip-&gt;dev, addr);
+    a = (uint*)bp-&gt;data;
+    if ((addr=a[final_offset]) == 0)
+    {
+        // 如果最终存储文件数据的数据块还没创建，现场分配一个真正的数据物理块
+      a[final_offset]  = addr = balloc(ip-&gt;dev);
+      // 记录修改一级块的日志
+      log_write(bp);
+    }
+     brelse(bp);
+    return addr;
+  }
+
+  panic(&quot;bmap: out of range&quot;);
+}
+</code></pre>
+<p>在 xv6 中，bmap() 内部对 ip-&gt;addrs[] 的修改属于 Inode 元数据修改，内核采用‘延迟合并提交’的策略，后续统一由上层的 iupdate(ip) 函数将其同步至磁盘的 Inode 区并记录日志；而对间接块内部数组 a[] 的修改属于 外部索引块的内容破坏，必须在 bmap 内部现场调用 log_write(bp) 提交事务。</p>
+<h1 id="symbolic-links">Symbolic links</h1>
+<p>这一个实验是要实现符号链接，符号链接就是在文件中保存指向文件的路径名，在打开文件的时候根据保存的路径名再去查找实际文件。与符号链接相反的就是硬链接，硬链接是将文件的inode号指向目标文件的inode，并将引用计数加一。<br>
+符号链接与硬链接的本质区别：<br>
+硬链接 (Hard Link)：本质是多个目录项指向同一个 inode 编号，并通过增加 inode 的引用计数（nlink）来维持文件生命周期。它的局限性在于不能跨磁盘文件系统，也不能链接到目录。<br>
+符号链接 (Soft Link)：它是一个独立存在的全新文件，拥有自己独立的 inode（类型为 T_SYMLINK）。只不过它的数据块里存的不是普通的文本内容，而是目标文件的路径字符串。当系统打开软链接时，内核会“顺藤摸瓜”，读取里面的路径并重新重定向到真正的目标文件。</p>
+<p>symlink的系统调用实现起来也很简单，就是创建一个inode，设置类型为T_SYMLINK，然后向这个inode中写入目标文件的路径就行了。</p>
+<pre><code class="language-c">uint64 sys_symlink(void)
+{
+  char target[MAXPATH];
+  char path[MAXPATH];
+  int len;
+
+  // 1. 初始化缓冲区，防止内存脏数据
+  memset(target, 0, sizeof(target));
+  memset(path, 0, sizeof(path));
+
+  // 2. 从用户态安全地拉取系统调用参数 (0: 目标路径, 1: 软链接存放路径)
+  if (argstr(0, target, MAXPATH) &lt; 0 || argstr(1, path, MAXPATH) &lt; 0 ) {
+    return -1;
+  }
+  
+  // 计算实际需要写入磁盘的路径长度 (必须包含字符串终止符 '\0')
+  len = strlen(target) + 1;
+
+  // ================= 开启文件系统事务 =================
+  begin_op();
+  struct inode *ip;
+
+  // 3. 在指定 path 创建一个崭新的 inode，文件类型设置为 T_SYMLINK
+  // 后两个参数 0,0 是主次设备号，仅设备文件可用，软链接填 0 即可
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+  // 4. 将目标路径 target 作为“文件数据”写入到这个 inode 的数据块中
+  if(writei(ip, 0, (uint64)target, 0, len) != len) {
+    // 【踩坑点/防死锁】如果写入失败，必须先释放 inode 锁和引用，再关闭事务！
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  // 5. 顺利完成，优雅释放当前 inode 并提交日志事务
+  iunlockput(ip);
+  end_op();
+  return 0;
+}
+
+</code></pre>
+<pre><code class="language-c">#define O_NOFOLLOW 0x800
+#define T_SYMLINK 4
+uint64
+sys_open(void){
+    ...
+    if(omode &amp; O_CREATE){
+        ...
+    }
+    else {
+        ...
+    }
+    // 此时的 ip 已经是经过解析且被锁住 (ilocked) 的状态
+     if (ip-&gt;type == T_SYMLINK) {
+   // 如果用户没带 O_NOFOLLOW 标志，则开始执行“顺藤摸瓜”追踪逻辑
+    if (!(omode &amp; O_NOFOLLOW)){
+      int cycle = 0;
+      char target[MAXPATH];
+      // 只要当前找到的依然是软链接，就继续深入追踪
+      while(ip-&gt;type == T_SYMLINK){
+          if (cycle &gt;= 10){
+            iunlockput(ip);
+            end_op();
+            return -1;
+          }
+          cycle++;
+          memset(target,0,sizeof(target));
+          // 读取当前软链接内部存储的“目标路径”
+          if (readi(ip, 0, (uint64)target, 0, MAXPATH) &lt;= 0) {
+            iunlockput(ip);
+            end_op();
+            return -1;
+          }
+          iunlockput(ip);
+          // 寻找下一个inode
+          if((ip = namei(target)) == 0){
+            end_op();
+            return -1;
+          }
+          ilock(ip);
+      }
+    }
+  }
+    ...
+}
+</code></pre>
+<p>这两个实验让我对文件系统认识加深了，不过还是觉得好难，什么时候能看懂linux文件管理代码。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#large-files">Large files</a></li>
+<li><a href="#symbolic-links">Symbolic links</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6-wen-jian-xi-tong/">
+              <h3 class="post-title">
+                xv6文件系统
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

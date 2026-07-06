@@ -1,0 +1,239 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xv6文件系统 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="xv6文件系统 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="
+##孤儿文件导致磁盘空间泄漏
+1、地毯式搜救
+当系统崩溃重启后，操作系统不急着开机，而是先把把整个磁盘从头到尾完完整整地扫描一遍（在 Linux 里这个工具叫 fsck）。fsck会把“Bitmap 标记为已占用的块”和“所有文件夹里登记..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              xv6文件系统
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-20
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <figure data-type="image" tabindex="1"><img src="https://dss544.github.io/post-images/1781919839176.png" alt="" loading="lazy"></figure>
+<p>##孤儿文件导致磁盘空间泄漏<br>
+1、地毯式搜救<br>
+当系统崩溃重启后，操作系统不急着开机，而是先把把整个磁盘从头到尾完完整整地扫描一遍（在 Linux 里这个工具叫 fsck）。fsck会把“Bitmap 标记为已占用的块”和“所有文件夹里登记的文件名”进行对账。如果发现某个 inode 在磁盘上占着坑，但全磁盘没有任何一个文件夹包含它，那就判定它是“孤儿”，直接在开机前把它释放掉。<br>
+缺点：太慢，每次都要从头扫描磁盘。<br>
+2、孤儿链表<br>
+不需要扫描全盘。只要当一个文件的名字被删掉（nlink == 0）、但内存里还有人开着它（ref != 0）的那一瞬间，内核立刻在磁盘的一个固定特殊位置（比如 超级块 Superblock 或者日志区）的“小本本”上记下一笔：“报告，inode 编号 5 变成孤儿了！”正常结束：如果程序正常关闭了文件，内核把空间释放后，会顺手把小本本上的这行字擦掉。崩溃恢复：如果中途突然断电，重启时系统不需要扫描全盘，只需要直奔这个“小本本”。只要发现小本本上还留着 inode 编号 5，就知道它是个没来得及处理的孤儿，直接把它清空即可。<br>
+优点：极快，开机速度不受磁盘大小影响（现代 Linux 文件系统如 ext4、XFS 均采用类似机制）。</p>
+<p>##防止文件并发撞车<br>
+线程A在查/a/b的时候，会先把a的锁释放 在取申请b的锁（为什么不先申请b在释放a呢？我的理解是可能导致死锁 比如线程1要在/a 要去/b就要获取/b的锁 而线程2在/a/b 要去/a 就要申请a的锁，结果两个线程互锁导致死锁）。但此时可能回来一个线程B，他速度更快获取/a的锁然后删除了b。此时线程A还没来得及给b加锁（处于真空期），结果第三个线程来了，通过balloc正好申请到b这个物理内存，用来存文本数据。这是A醒来发现目录b变成文本文件了，但他还是用struct dirent数组来解析，就会导致错误。<br>
+xv6的解决方法：线程A在释放/a的锁之前，先找到b的inum，然后使用iget把b的应用计数加1在释放掉/a的锁，这样此时线程B就无法删除它，因为unlink函数中调用iput释放空间的条件是<code>if(ip-&gt;ref == 1 &amp;&amp; ip-&gt;valid &amp;&amp; ip-&gt;nlink == 0)</code>，所以线程B只能让nlink为0，ref--，而不能删除数据块。</p>
+<h2 id="linux-硬链接与软链接核心特性对比">🔗 Linux 硬链接与软链接核心特性对比</h2>
+<p>在 Linux/Unix 系统中，**硬链接（Hard Link）<strong>和</strong>软链接（Soft Link/Symbolic Link）**是两种完全不同的“文件别名”机制。为了方便对比理解，它们的底层区别和特性已汇总在下表中：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">特性</th>
+<th style="text-align:left">硬链接 (Hard Link)</th>
+<th style="text-align:left">软链接 (Soft Link / Symbolic Link)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>Inode 编号</strong></td>
+<td style="text-align:left"><strong>与源文件相同</strong> <br><em>(共享同一个物理文件真身)</em></td>
+<td style="text-align:left"><strong>与源文件不同</strong> <br><em>(自己是一个独立的新文件)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>磁盘空间</strong></td>
+<td style="text-align:left"><strong>不占用额外空间</strong> <br><em>(仅在所属目录的数据块里多写一行记录)</em></td>
+<td style="text-align:left"><strong>占用极小空间</strong> <br><em>(需要单独的磁盘块来存储目标路径字符串)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>跨分区/跨盘</strong></td>
+<td style="text-align:left">❌ <strong>绝对不行</strong> <br><em>(每个分区的 Inode 独立排号，无法跨盘映射)</em></td>
+<td style="text-align:left"><strong>完全可以</strong> <br><em>(内部存的是路径字符串，顺藤摸瓜即可)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>对目录使用</strong></td>
+<td style="text-align:left">❌ <strong>绝对不行</strong> <br><em>(避免系统内部形成环路死循环，内核严格禁止)</em></td>
+<td style="text-align:left"><strong>完全可以</strong> <br><em>(非常适合为很深的文件夹创建快捷方式)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>源文件被删后</strong></td>
+<td style="text-align:left"><strong>完好无损</strong> <br><em>(只要文件的物理链接数 <code>nlink &gt; 0</code>，数据就依然可访问)</em></td>
+<td style="text-align:left">❌ <strong>链接失效</strong> <br><em>(变成“死链接”，类似于 Windows 快捷方式找不到源头)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>创建命令</strong></td>
+<td style="text-align:left"><code>ln 源文件 硬链接名</code></td>
+<td style="text-align:left"><code>ln -s 源文件 软链接名</code> <br><em>(多了一个 <code>-s</code> 参数)</em></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="快速记忆大白话场景模拟">💡 快速记忆大白话场景模拟</h3>
+<p>我们可以把磁盘上的<strong>真实数据</strong>想象成一本<strong>真正的纸质书</strong>：</p>
+<ul>
+<li><strong>硬链接</strong>：相当于你在它的封面上贴了两个名字标签（比如左边写《微积分》，右边写《大一教材》）。哪怕你把《微积分》这个标签撕掉，这本书依然完好无损地躺在那里，因为还有个《大一教材》的标签吊着它的命。</li>
+<li><strong>软链接</strong>：相当于你在另一张独立的便利贴上写了一句话：“<em>那本微积分教材在客厅第三个书架上</em>”。如果你把那本真正的书一把火烧了，这张便利贴依然在，但你顺着便利贴上的话去找书时，只能看到一堆空气（死链接）。</li>
+</ul>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#linux-%E7%A1%AC%E9%93%BE%E6%8E%A5%E4%B8%8E%E8%BD%AF%E9%93%BE%E6%8E%A5%E6%A0%B8%E5%BF%83%E7%89%B9%E6%80%A7%E5%AF%B9%E6%AF%94">🔗 Linux 硬链接与软链接核心特性对比</a>
+<ul>
+<li><a href="#%E5%BF%AB%E9%80%9F%E8%AE%B0%E5%BF%86%E5%A4%A7%E7%99%BD%E8%AF%9D%E5%9C%BA%E6%99%AF%E6%A8%A1%E6%8B%9F">💡 快速记忆大白话场景模拟</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6-jin-cheng-diao-du/">
+              <h3 class="post-title">
+                xv6进程调度
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

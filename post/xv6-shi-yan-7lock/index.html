@@ -1,0 +1,460 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xv6实验[7]-locks | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="xv6实验[7]-locks | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Memory allocator
+第一个实验是对XV6内核的内存页面分配器进行改进，改进的策略在前面的章节中也讲过了。XV6原本是使用一个空闲页面链表，但是这样就会导致不同CPU上的kalloc和kfree会产生锁争用，内存页面的分配被完全..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              xv6实验[7]-locks
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-07-06
+              </span>
+              <span>
+                10 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h2 id="memory-allocator">Memory allocator</h2>
+<p>第一个实验是对XV6内核的内存页面分配器进行改进，改进的策略在前面的章节中也讲过了。XV6原本是使用一个空闲页面链表，但是这样就会导致不同CPU上的kalloc和kfree会产生锁争用，内存页面的分配被完全串行化了，降低了系统的性能。<br>
+而一个改进策略就是为每个CPU核心分配一个空闲链表，kalloc和kfree都在本核心的链表上进行，只有当当前核心的链表为空时才去访问其他核心的链表。通过这种策略就可以减少锁的争用，只有当某核心的链表为空时才会发生锁争用。<br>
+首先定义NCPU个kmem结构体，并在kinit函数中对锁进行初始化。</p>
+<pre><code class="language-c">struct  {
+  struct spinlock lock;
+  struct run *freelist;
+  char localname[10];
+}  kmems[NCPU];
+void
+kinit()
+{
+  for (int i = 0; i &lt; NCPU; i++) {
+    snprintf(kmem[i].lock_name, sizeof(kmem[i].lock_name), &quot;kmem_%d&quot;, i);
+    initlock(&amp;kmem[i].lock, kmem[i].lock_name);
+  }
+  freerange(end, (void*)PHYSTOP);
+}
+</code></pre>
+<p>对于kfree函数，直接把块释放到该cpu的链表上。</p>
+<pre><code class="language-c">void
+kfree(void *pa)
+{
+ struct run *r;
+
+ if(((uint64)pa % PGSIZE) != 0 || (char*)pa &lt; end || (uint64)pa &gt;= PHYSTOP)
+   panic(&quot;kfree&quot;);
+
+ // Fill with junk to catch dangling refs.
+ memset(pa, 1, PGSIZE);
+
+ r = (struct run*)pa;
+ // 直接释放到各个cpu上的链表上
+
+ push_off();
+ int id = cpuid();
+ acquire(&amp;kmems[id].lock);
+ r-&gt;next = kmems[id].freelist;
+ kmems[id].freelist = r;
+ release(&amp;kmems[id].lock);
+ pop_off();
+}
+</code></pre>
+<p>对于kalloc函数，首先在自己的链表里面寻找，如果找到直接返回，如果没有遍历其他cpu，如果其他cpu有空闲就摘除他们的一半来填充自己，如果他们只有一个也能用。</p>
+<pre><code class="language-c">void *
+kalloc(void)
+{
+ struct run *r;
+ push_off();
+ int id = cpuid();
+ acquire(&amp;kmems[id].lock);
+ r = kmems[id].freelist;
+ // 在自己这里拿到了
+ if(r){
+   kmems[id].freelist = r-&gt;next;
+   release(&amp;kmems[id].lock);
+ }
+ else
+ {
+   release(&amp;kmems[id].lock);
+   // 去其他cpu找找
+   for (int i = 0; i &lt; sizeof(kmems) / sizeof(*kmems); i++)
+   {
+     if (i == id) continue;
+     acquire(&amp;kmems[i].lock);
+     // 有东西
+     if (kmems[i].freelist)
+     {
+       struct run **slow = &amp;kmems[i].freelist;
+       struct run *fast = kmems[i].freelist;
+       while(fast &amp;&amp; fast-&gt;next)
+       {
+         fast = fast-&gt;next-&gt;next;
+         slow = &amp;((*slow)-&gt;next);
+       }   
+         r = *slow;
+         *slow = 0;
+         release(&amp;kmems[i].lock);
+         acquire(&amp;kmems[id].lock);
+         kmems[id].freelist = r-&gt;next;
+         release(&amp;kmems[id].lock);
+         break;
+     }
+     release(&amp;kmems[i].lock);
+   }
+ }
+ pop_off();
+ if(r)
+   memset((char*)r, 5, PGSIZE); // fill with junk
+ return (void*)r;
+}
+</code></pre>
+<h2 id="buffer-cache">Buffer cache</h2>
+<p>为了提高并行性能，我们可以用哈希表来代替链表，这样每次获取和释放的时候，都只需要对哈希表的一个桶进行加锁，桶之间的操作就可以并行进行。只有当需要对缓冲区进行驱逐替换时，才需要对整个哈希表加锁来查找要替换的块。<br>
+使用哈希表就不能使用链表来维护LRU信息，因此需要在buf结构体中添加timestamp域来记录释放的事件，同时prev域也不再需要。</p>
+<pre><code class="language-c">struct buf {
+    ...
+    ...
+ uint timestamp;
+};
+</code></pre>
+<p>在brelse函数中记录timestamp</p>
+<pre><code class="language-c">void
+brelse(struct buf *b)
+{
+ if(!holdingsleep(&amp;b-&gt;lock))
+   panic(&quot;brelse&quot;);
+
+ releasesleep(&amp;b-&gt;lock);
+
+ // 8. 【核心修复】：彻底废除全局锁，释放时只需要拿该块对应的哈希桶锁！
+ int idx = hash(b-&gt;dev, b-&gt;blockno);
+ acquire(&amp;hashtable[idx].lock);
+ b-&gt;refcnt--;
+ if (b-&gt;refcnt == 0) {
+   b-&gt;timestamp = ticks; // 盖上本地时间戳
+ }
+ release(&amp;hashtable[idx].lock);
+}
+</code></pre>
+<p>定义哈希表的结构体，bcache.lock为表级锁，而hashtable[i].lock为桶级锁：</p>
+<pre><code class="language-c">#define NBUCKET 13
+#define NBUF (NBUCKET * 3)
+
+struct {
+  struct spinlock lock;
+  struct buf buf[NBUF];
+} bcache;
+
+struct bucket {
+  struct spinlock lock;
+  struct buf head;
+}hashtable[NBUCKET];
+
+int
+hash(uint dev, uint blockno)
+{
+  return blockno % NBUCKET;
+}
+</code></pre>
+<p>在binit函数中对哈希表进行初始化，将bcache.buf[NBUF]中的块平均分配给每个桶，记得设置b-&gt;blockno使块的hash与桶相对应，后面需要根据块来查找对应的桶。</p>
+<pre><code class="language-c">#define NBUCKET 13
+#define NBUF          (NBUCKET * 3)
+void
+binit(void)
+{
+  struct buf *b;
+
+  initlock(&amp;bcache.lock, &quot;bcache&quot;);
+
+  for(b = bcache.buf; b &lt; bcache.buf+NBUF; b++){
+    initsleeplock(&amp;b-&gt;lock, &quot;buffer&quot;);
+  }
+
+  // 1. 【修复】：让哈希桶的链表头初始化为双向自循环，一个都不能漏
+  for (int i = 0; i &lt; NBUCKET; i++) {
+    initlock(&amp;hashtable[i].lock, &quot;bcache_bucket&quot;);
+    hashtable[i].head.next = &amp;hashtable[i].head;
+    hashtable[i].head.prev = &amp;hashtable[i].head;
+  }
+
+  // 2. 【修复】：不要用 NBUF/NBUCKET，直接遍历 所有块，取模打散
+  for (int i = 0; i &lt; NBUF; i++) {
+    b = &amp;bcache.buf[i];
+    int bucket_id = i % NBUCKET;
+    b-&gt;blockno = bucket_id; // 开机哈希对齐
+    b-&gt;dev = 0;
+    b-&gt;refcnt = 0;
+    b-&gt;timestamp = 0;
+
+    // 严谨的双向循环链表头插
+    struct buf *head = &amp;hashtable[bucket_id].head;
+    b-&gt;next = head-&gt;next;
+    b-&gt;prev = head;
+    head-&gt;next-&gt;prev = b;
+    head-&gt;next = b;
+  }
+}
+</code></pre>
+<p>之后就是重点bget函数，首先在对应的桶当中查找当前块是否被缓存，如果被缓存就直接返回；如果没有被缓存的话，就需要查找一个块并将其逐出替换。我这里使用的策略是先在当前桶当中查找，当前桶没有查找到再去全局数组中查找，这样的话如果当前桶中有空闲块就可以避免全局锁。<br>
+在全局数组中查找时，要先加上表级锁，当找到一个块之后，就可以根据块的信息查找到对应的桶，之后再对该桶加锁，将块从桶的链表上取下来，释放锁，最后再加到当前桶的链表上去。<br>
+这里有个小问题就是全局数组中找到一个块之后，到对该桶加上锁之间有一个窗口，可能就在这个窗口里面这个块就被那个桶对应的本地查找阶段用掉了。因此，需要在加上锁之后判断是否被用了，如果被用了就要重新查找。</p>
+<pre><code class="language-c">static struct buf*
+bget(uint dev, uint blockno)
+{
+  struct buf *b;
+  int idx = hash(dev, blockno);
+  struct bucket* bucket = hashtable + idx;
+  acquire(&amp;bucket-&gt;lock);
+  // 第一阶段：本桶高速命中
+  for(b = bucket-&gt;head.next; b != &amp;bucket-&gt;head; b = b-&gt;next){
+    if(b-&gt;dev == dev &amp;&amp; b-&gt;blockno == blockno){
+      b-&gt;refcnt++;
+      release(&amp;bucket-&gt;lock);
+      acquiresleep(&amp;b-&gt;lock);
+      return b;
+    }
+  }
+  // 第二阶段：本桶局部替换
+  uint min_time = 0xffffffff;
+  struct buf* replace_buf = 0;
+  for(b = bucket-&gt;head.next; b != &amp;bucket-&gt;head; b = b-&gt;next){
+    if(b-&gt;refcnt == 0 &amp;&amp; b-&gt;timestamp &lt; min_time) {
+      replace_buf = b;
+      min_time = b-&gt;timestamp;
+    }
+  }
+  if(replace_buf) {
+    goto find; // 本桶有货，直接跳去 find
+  }
+  // 第三阶段：全局偷块
+  // 3. 【核心修复】：去全局抢块前，先放掉当前桶的锁，消除 A-B-B-A 死锁！
+  release(&amp;bucket-&gt;lock);
+  acquire(&amp;bcache.lock);
+refind:
+  replace_buf = 0;
+  min_time = 0xffffffff;
+  for(b = bcache.buf; b &lt; bcache.buf + NBUF; b++) {
+    if(b-&gt;refcnt == 0 &amp;&amp; b-&gt;timestamp &lt; min_time) {
+      replace_buf = b;
+      min_time = b-&gt;timestamp;
+    }
+  }
+  if (replace_buf) {
+    int ridx = hash(replace_buf-&gt;dev, replace_buf-&gt;blockno);
+    // 4. 【核心修复】：严格按照编号从小到大对两个桶加锁，防御并发死锁
+    if (ridx &lt; idx) {
+      acquire(&amp;hashtable[ridx].lock);
+      acquire(&amp;hashtable[idx].lock);
+    } else {
+      acquire(&amp;hashtable[idx].lock);
+      acquire(&amp;hashtable[ridx].lock);
+    }
+    if(replace_buf-&gt;refcnt != 0) {
+      release(&amp;hashtable[ridx].lock);
+      release(&amp;hashtable[idx].lock);
+      goto refind;
+    }
+    // 5. 【核心修复】：采用严谨的双向循环链表摘除，防止内存野指针 Panic
+    replace_buf-&gt;next-&gt;prev = replace_buf-&gt;prev;
+    replace_buf-&gt;prev-&gt;next = replace_buf-&gt;next;
+    release(&amp;hashtable[ridx].lock); // 摘除后立刻释放老家锁
+    // 6. 【核心修复】：采用严谨的双向循环链表挂载到新家
+    replace_buf-&gt;next = bucket-&gt;head.next;
+    replace_buf-&gt;prev = &amp;bucket-&gt;head;
+    bucket-&gt;head.next-&gt;prev = replace_buf;
+    bucket-&gt;head.next = replace_buf;
+    // 7. 【核心修复】：大搬家完，在 goto find 前立刻释放全局大锁！
+    // 这样在接下来的 acquiresleep 睡觉读盘期间，全局锁是放开的，多核绝不卡死。
+    release(&amp;bcache.lock);
+    goto find;
+  }
+  else {
+    release(&amp;bcache.lock);
+    panic(&quot;bget: no buffers&quot;);
+  }
+find:
+  // 此时手里唯一抓着当前桶的锁（bucket-&gt;lock）
+  replace_buf-&gt;dev = dev;
+  replace_buf-&gt;blockno = blockno;
+  replace_buf-&gt;valid = 0;
+  replace_buf-&gt;refcnt = 1;
+  release(&amp;bucket-&gt;lock); // 安全释放桶锁
+  acquiresleep(&amp;replace_buf-&gt;lock);
+  return replace_buf;
+}
+</code></pre>
+<pre><code class="language-c">最后将bpin和bunpin的锁替换为桶级锁就行了：
+
+void
+bpin(struct buf *b) {
+  int idx = hash(b-&gt;dev, b-&gt;blockno);
+  acquire(&amp;hashtable[idx].lock);
+  b-&gt;refcnt++;
+  release(&amp;hashtable[idx].lock);
+}
+
+void
+bunpin(struct buf *b) {
+  int idx = hash(b-&gt;dev, b-&gt;blockno);
+  acquire(&amp;hashtable[idx].lock);
+  b-&gt;refcnt--;
+  release(&amp;hashtable[idx].lock);
+}
+</code></pre>
+<p>最终结果如下：<br>
+<img src="https://dss544.github.io/post-images/1783316629407.png" alt="" loading="lazy"></p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#memory-allocator">Memory allocator</a></li>
+<li><a href="#buffer-cache">Buffer cache</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6shi-yan-5/">
+              <h3 class="post-title">
+                xv6实验[6]-实现mmap
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

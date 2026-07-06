@@ -1,0 +1,250 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bootloader | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Bootloader | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="第一步：关闭全局中断 (非常关键)
+第二步：反初始化所有开启的外设 (特别是 USB)
+第三步：恢复时钟到默认状态
+第四步：关闭并清理 SysTick (滴答定时器)
+APP 刚一启动还没配好 VTOR，SysTick 中断就来了，直接跑飞..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Bootloader
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-14
+              </span>
+              <span>
+                4 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>第一步：关闭全局中断 (非常关键)<br>
+第二步：反初始化所有开启的外设 (特别是 USB)<br>
+第三步：恢复时钟到默认状态<br>
+第四步：关闭并清理 SysTick (滴答定时器)<br>
+APP 刚一启动还没配好 VTOR，SysTick 中断就来了，直接跑飞<br>
+第五步：清除所有 NVIC 挂起的中断,手动设置主栈栈顶地址 MSP</p>
+<h2 id="一份标准的-bootloader-跳转代码模板">一份标准的 Bootloader 跳转代码模板</h2>
+<pre><code class="language-c">typedef void (*pFunction)(void);
+pFunction Jump_To_Application;
+uint32_t JumpAddress;
+
+#define APP_ADDRESS 0x08010000
+
+void Jump_To_App(void)
+{
+    // 1. 检查栈顶地址是否合法 (判断是否真的有 APP 存在)
+    if (((*(__IO uint32_t*)APP_ADDRESS) &amp; 0x2FFE0000) == 0x20000000)
+    {
+        // 2. 关全局中断
+        __disable_irq();
+        
+        // 3. 反初始化外设 (解决你 USB 卡死的问题)
+        // HAL_PCD_DeInit(&amp;hpcd_USB_FS); 
+        // 各种 HAL_UART_DeInit 等...
+        
+        // 4. 恢复系统时钟到默认态 (切回HSI，关PLL)
+        HAL_RCC_DeInit();
+        // 5. 关闭 SysTick
+        SysTick-&gt;CTRL = 0;
+        SysTick-&gt;LOAD = 0;
+        SysTick-&gt;VAL  = 0;
+        // 6. 清理 NVIC 中断状态
+        for (int i = 0; i &lt; 8; i++) {
+            NVIC-&gt;ICER[i]=0xFFFFFFFF; 
+            NVIC-&gt;ICPR[i]=0xFFFFFFFF; 
+        }
+        // 7. 获取 APP 的复位向量地址 (APP_ADDRESS + 4 存放的是 Reset_Handler 地址)
+        JumpAddress = *(__IO uint32_t*) (APP_ADDRESS + 4);
+        Jump_To_Application = (pFunction) JumpAddress;
+        // 8. 设置主栈指针 MSP
+        __set_MSP(*(__IO uint32_t*) APP_ADDRESS);
+        // 9. 真正执行跳转 (其实就是调用函数指针，修改了 PC 指针)
+        Jump_To_Application();
+    }
+}
+</code></pre>
+<p>进入app后<br>
+第一步：重定向中断向量表 (VTOR)<br>
+第二步：重新开启全局中断</p>
+<ol>
+<li>终极内功心法：官方应用笔记 (Application Notes, AN)<br>
+永远不要只看 Datasheet（数据手册）和 Reference Manual（参考手册）。芯片原厂（如 ST、NXP、TI）的资深架构师会专门写一类文档叫 Application Notes（应用笔记）。</li>
+</ol>
+<p>精髓所在： 比如针对你今天看到的 ADC 精度问题，ST 有一篇极其经典的实战文档 AN2834《How to get the best ADC accuracy in STM32 microcontrollers》。里面不仅讲了内部参考电压，还极其详尽地剖析了阻抗匹配、运放跟随、PCB 走线干扰以及如何用 DMA 防抖。</p>
+<p>获取路径： 去 ST 官网搜你的芯片型号，在 Documentation 栏目下专门筛选 Application Notes。这里面全是原厂老专家几十年的实战经验总结。</p>
+<ol start="2">
+<li>
+<p>原厂的官方示例源码库 (Projects &amp; Examples)<br>
+你以为 CubeMX 生成出来的代码就是标准答案吗？大错特错。<br>
+在 STM32 的 HAL 库安装目录下（例如 STM32Cube_FW_F4_V1.xx.x），有一个 Projects 文件夹。里面包含了针对官方开发板的各种极端和高级用法代码。比如复杂的 DMA 乒乓缓存、定时器高级联动、双 ADC 同步采样等，原厂都写了极其严谨的标准示范代码放在那里，只是 CubeMX 的图形界面点不出来而已。</p>
+</li>
+<li>
+<p>高质量的硬核社区与论坛<br>
+抛弃那些满是“求个源码”的入门级贴吧，去这些地方看一线工程师的实战讨论：</p>
+</li>
+</ol>
+<p>硬汉嵌入式 (Armfly) 论坛： 国内做 STM32、RTOS 底层架构和 DSP 算法极其硬核的社区。他们发布的“高级篇教程”里，全是你今天看到的这种工业级处理手法。</p>
+<p>EEVblog (英文社区)： 全球顶级的电子硬件工程师论坛。当你在底层遇到那种解释不通的玄学 BUG 时，用英文在这里搜，大概率能看到国外工程师极其深度的示波器抓轨分析和代码级 Workaround（规避方案）。</p>
+<p>RT-Thread 开发者社区： 里面有大量经验丰富的开发者讨论底层驱动的健壮性设计和设备驱动框架。</p>
+<ol start="4">
+<li>工业级/车规级的顶级开源项目<br>
+就像你这次通过看开源项目学到 ADC 校准一样，继续保持这个习惯：</li>
+</ol>
+<p>无人机飞控项目 (PX4, ArduPilot)： 这些项目对传感器数据融合、ADC 采样精度、系统实时性的要求极其变态。去翻看它们的底层驱动（HAL）代码，简直是教科书级别的严谨。</p>
+<p>优秀的开源协议栈： 除了你已经接触过的 CherryUSB，还可以多看看 lwIP、FatFS 的底层移植接口，看看各路大神是如何把复杂的硬件时序抽象成优雅的软件架构的。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E4%B8%80%E4%BB%BD%E6%A0%87%E5%87%86%E7%9A%84-bootloader-%E8%B7%B3%E8%BD%AC%E4%BB%A3%E7%A0%81%E6%A8%A1%E6%9D%BF">一份标准的 Bootloader 跳转代码模板</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6-shi-yan-3-xie-shi-fu-zhi/">
+              <h3 class="post-title">
+                 xv6实验[3]-写时复制
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

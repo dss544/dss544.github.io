@@ -1,0 +1,1751 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>https://dss544.github.io</id>
+    <title>Gridea</title>
+    <updated>2026-07-06T10:55:15.386Z</updated>
+    <generator>https://github.com/jpmonette/feed</generator>
+    <link rel="alternate" href="https://dss544.github.io"/>
+    <link rel="self" href="https://dss544.github.io/atom.xml"/>
+    <subtitle>温故而知新</subtitle>
+    <logo>https://dss544.github.io/images/avatar.png</logo>
+    <icon>https://dss544.github.io/favicon.ico</icon>
+    <rights>All rights reserved 2026, Gridea</rights>
+    <entry>
+        <title type="html"><![CDATA[xv6实验[7]-locks]]></title>
+        <id>https://dss544.github.io/post/xv6-shi-yan-7lock/</id>
+        <link href="https://dss544.github.io/post/xv6-shi-yan-7lock/">
+        </link>
+        <updated>2026-07-06T05:26:02.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="memory-allocator">Memory allocator</h2>
+<p>第一个实验是对XV6内核的内存页面分配器进行改进，改进的策略在前面的章节中也讲过了。XV6原本是使用一个空闲页面链表，但是这样就会导致不同CPU上的kalloc和kfree会产生锁争用，内存页面的分配被完全串行化了，降低了系统的性能。<br>
+而一个改进策略就是为每个CPU核心分配一个空闲链表，kalloc和kfree都在本核心的链表上进行，只有当当前核心的链表为空时才去访问其他核心的链表。通过这种策略就可以减少锁的争用，只有当某核心的链表为空时才会发生锁争用。<br>
+首先定义NCPU个kmem结构体，并在kinit函数中对锁进行初始化。</p>
+<pre><code class="language-c">struct  {
+  struct spinlock lock;
+  struct run *freelist;
+  char localname[10];
+}  kmems[NCPU];
+void
+kinit()
+{
+  for (int i = 0; i &lt; NCPU; i++) {
+    snprintf(kmem[i].lock_name, sizeof(kmem[i].lock_name), &quot;kmem_%d&quot;, i);
+    initlock(&amp;kmem[i].lock, kmem[i].lock_name);
+  }
+  freerange(end, (void*)PHYSTOP);
+}
+</code></pre>
+<p>对于kfree函数，直接把块释放到该cpu的链表上。</p>
+<pre><code class="language-c">void
+kfree(void *pa)
+{
+ struct run *r;
+
+ if(((uint64)pa % PGSIZE) != 0 || (char*)pa &lt; end || (uint64)pa &gt;= PHYSTOP)
+   panic(&quot;kfree&quot;);
+
+ // Fill with junk to catch dangling refs.
+ memset(pa, 1, PGSIZE);
+
+ r = (struct run*)pa;
+ // 直接释放到各个cpu上的链表上
+
+ push_off();
+ int id = cpuid();
+ acquire(&amp;kmems[id].lock);
+ r-&gt;next = kmems[id].freelist;
+ kmems[id].freelist = r;
+ release(&amp;kmems[id].lock);
+ pop_off();
+}
+</code></pre>
+<p>对于kalloc函数，首先在自己的链表里面寻找，如果找到直接返回，如果没有遍历其他cpu，如果其他cpu有空闲就摘除他们的一半来填充自己，如果他们只有一个也能用。</p>
+<pre><code class="language-c">void *
+kalloc(void)
+{
+ struct run *r;
+ push_off();
+ int id = cpuid();
+ acquire(&amp;kmems[id].lock);
+ r = kmems[id].freelist;
+ // 在自己这里拿到了
+ if(r){
+   kmems[id].freelist = r-&gt;next;
+   release(&amp;kmems[id].lock);
+ }
+ else
+ {
+   release(&amp;kmems[id].lock);
+   // 去其他cpu找找
+   for (int i = 0; i &lt; sizeof(kmems) / sizeof(*kmems); i++)
+   {
+     if (i == id) continue;
+     acquire(&amp;kmems[i].lock);
+     // 有东西
+     if (kmems[i].freelist)
+     {
+       struct run **slow = &amp;kmems[i].freelist;
+       struct run *fast = kmems[i].freelist;
+       while(fast &amp;&amp; fast-&gt;next)
+       {
+         fast = fast-&gt;next-&gt;next;
+         slow = &amp;((*slow)-&gt;next);
+       }   
+         r = *slow;
+         *slow = 0;
+         release(&amp;kmems[i].lock);
+         acquire(&amp;kmems[id].lock);
+         kmems[id].freelist = r-&gt;next;
+         release(&amp;kmems[id].lock);
+         break;
+     }
+     release(&amp;kmems[i].lock);
+   }
+ }
+ pop_off();
+ if(r)
+   memset((char*)r, 5, PGSIZE); // fill with junk
+ return (void*)r;
+}
+</code></pre>
+<h2 id="buffer-cache">Buffer cache</h2>
+<p>为了提高并行性能，我们可以用哈希表来代替链表，这样每次获取和释放的时候，都只需要对哈希表的一个桶进行加锁，桶之间的操作就可以并行进行。只有当需要对缓冲区进行驱逐替换时，才需要对整个哈希表加锁来查找要替换的块。<br>
+使用哈希表就不能使用链表来维护LRU信息，因此需要在buf结构体中添加timestamp域来记录释放的事件，同时prev域也不再需要。</p>
+<pre><code class="language-c">struct buf {
+    ...
+    ...
+ uint timestamp;
+};
+</code></pre>
+<p>在brelse函数中记录timestamp</p>
+<pre><code class="language-c">void
+brelse(struct buf *b)
+{
+ if(!holdingsleep(&amp;b-&gt;lock))
+   panic(&quot;brelse&quot;);
+
+ releasesleep(&amp;b-&gt;lock);
+
+ // 8. 【核心修复】：彻底废除全局锁，释放时只需要拿该块对应的哈希桶锁！
+ int idx = hash(b-&gt;dev, b-&gt;blockno);
+ acquire(&amp;hashtable[idx].lock);
+ b-&gt;refcnt--;
+ if (b-&gt;refcnt == 0) {
+   b-&gt;timestamp = ticks; // 盖上本地时间戳
+ }
+ release(&amp;hashtable[idx].lock);
+}
+</code></pre>
+<p>定义哈希表的结构体，bcache.lock为表级锁，而hashtable[i].lock为桶级锁：</p>
+<pre><code class="language-c">#define NBUCKET 13
+#define NBUF (NBUCKET * 3)
+
+struct {
+  struct spinlock lock;
+  struct buf buf[NBUF];
+} bcache;
+
+struct bucket {
+  struct spinlock lock;
+  struct buf head;
+}hashtable[NBUCKET];
+
+int
+hash(uint dev, uint blockno)
+{
+  return blockno % NBUCKET;
+}
+</code></pre>
+<p>在binit函数中对哈希表进行初始化，将bcache.buf[NBUF]中的块平均分配给每个桶，记得设置b-&gt;blockno使块的hash与桶相对应，后面需要根据块来查找对应的桶。</p>
+<pre><code class="language-c">#define NBUCKET 13
+#define NBUF          (NBUCKET * 3)
+void
+binit(void)
+{
+  struct buf *b;
+
+  initlock(&amp;bcache.lock, &quot;bcache&quot;);
+
+  for(b = bcache.buf; b &lt; bcache.buf+NBUF; b++){
+    initsleeplock(&amp;b-&gt;lock, &quot;buffer&quot;);
+  }
+
+  // 1. 【修复】：让哈希桶的链表头初始化为双向自循环，一个都不能漏
+  for (int i = 0; i &lt; NBUCKET; i++) {
+    initlock(&amp;hashtable[i].lock, &quot;bcache_bucket&quot;);
+    hashtable[i].head.next = &amp;hashtable[i].head;
+    hashtable[i].head.prev = &amp;hashtable[i].head;
+  }
+
+  // 2. 【修复】：不要用 NBUF/NBUCKET，直接遍历 所有块，取模打散
+  for (int i = 0; i &lt; NBUF; i++) {
+    b = &amp;bcache.buf[i];
+    int bucket_id = i % NBUCKET;
+    b-&gt;blockno = bucket_id; // 开机哈希对齐
+    b-&gt;dev = 0;
+    b-&gt;refcnt = 0;
+    b-&gt;timestamp = 0;
+
+    // 严谨的双向循环链表头插
+    struct buf *head = &amp;hashtable[bucket_id].head;
+    b-&gt;next = head-&gt;next;
+    b-&gt;prev = head;
+    head-&gt;next-&gt;prev = b;
+    head-&gt;next = b;
+  }
+}
+</code></pre>
+<p>之后就是重点bget函数，首先在对应的桶当中查找当前块是否被缓存，如果被缓存就直接返回；如果没有被缓存的话，就需要查找一个块并将其逐出替换。我这里使用的策略是先在当前桶当中查找，当前桶没有查找到再去全局数组中查找，这样的话如果当前桶中有空闲块就可以避免全局锁。<br>
+在全局数组中查找时，要先加上表级锁，当找到一个块之后，就可以根据块的信息查找到对应的桶，之后再对该桶加锁，将块从桶的链表上取下来，释放锁，最后再加到当前桶的链表上去。<br>
+这里有个小问题就是全局数组中找到一个块之后，到对该桶加上锁之间有一个窗口，可能就在这个窗口里面这个块就被那个桶对应的本地查找阶段用掉了。因此，需要在加上锁之后判断是否被用了，如果被用了就要重新查找。</p>
+<pre><code class="language-c">static struct buf*
+bget(uint dev, uint blockno)
+{
+  struct buf *b;
+  int idx = hash(dev, blockno);
+  struct bucket* bucket = hashtable + idx;
+  acquire(&amp;bucket-&gt;lock);
+  // 第一阶段：本桶高速命中
+  for(b = bucket-&gt;head.next; b != &amp;bucket-&gt;head; b = b-&gt;next){
+    if(b-&gt;dev == dev &amp;&amp; b-&gt;blockno == blockno){
+      b-&gt;refcnt++;
+      release(&amp;bucket-&gt;lock);
+      acquiresleep(&amp;b-&gt;lock);
+      return b;
+    }
+  }
+  // 第二阶段：本桶局部替换
+  uint min_time = 0xffffffff;
+  struct buf* replace_buf = 0;
+  for(b = bucket-&gt;head.next; b != &amp;bucket-&gt;head; b = b-&gt;next){
+    if(b-&gt;refcnt == 0 &amp;&amp; b-&gt;timestamp &lt; min_time) {
+      replace_buf = b;
+      min_time = b-&gt;timestamp;
+    }
+  }
+  if(replace_buf) {
+    goto find; // 本桶有货，直接跳去 find
+  }
+  // 第三阶段：全局偷块
+  // 3. 【核心修复】：去全局抢块前，先放掉当前桶的锁，消除 A-B-B-A 死锁！
+  release(&amp;bucket-&gt;lock);
+  acquire(&amp;bcache.lock);
+refind:
+  replace_buf = 0;
+  min_time = 0xffffffff;
+  for(b = bcache.buf; b &lt; bcache.buf + NBUF; b++) {
+    if(b-&gt;refcnt == 0 &amp;&amp; b-&gt;timestamp &lt; min_time) {
+      replace_buf = b;
+      min_time = b-&gt;timestamp;
+    }
+  }
+  if (replace_buf) {
+    int ridx = hash(replace_buf-&gt;dev, replace_buf-&gt;blockno);
+    // 4. 【核心修复】：严格按照编号从小到大对两个桶加锁，防御并发死锁
+    if (ridx &lt; idx) {
+      acquire(&amp;hashtable[ridx].lock);
+      acquire(&amp;hashtable[idx].lock);
+    } else {
+      acquire(&amp;hashtable[idx].lock);
+      acquire(&amp;hashtable[ridx].lock);
+    }
+    if(replace_buf-&gt;refcnt != 0) {
+      release(&amp;hashtable[ridx].lock);
+      release(&amp;hashtable[idx].lock);
+      goto refind;
+    }
+    // 5. 【核心修复】：采用严谨的双向循环链表摘除，防止内存野指针 Panic
+    replace_buf-&gt;next-&gt;prev = replace_buf-&gt;prev;
+    replace_buf-&gt;prev-&gt;next = replace_buf-&gt;next;
+    release(&amp;hashtable[ridx].lock); // 摘除后立刻释放老家锁
+    // 6. 【核心修复】：采用严谨的双向循环链表挂载到新家
+    replace_buf-&gt;next = bucket-&gt;head.next;
+    replace_buf-&gt;prev = &amp;bucket-&gt;head;
+    bucket-&gt;head.next-&gt;prev = replace_buf;
+    bucket-&gt;head.next = replace_buf;
+    // 7. 【核心修复】：大搬家完，在 goto find 前立刻释放全局大锁！
+    // 这样在接下来的 acquiresleep 睡觉读盘期间，全局锁是放开的，多核绝不卡死。
+    release(&amp;bcache.lock);
+    goto find;
+  }
+  else {
+    release(&amp;bcache.lock);
+    panic(&quot;bget: no buffers&quot;);
+  }
+find:
+  // 此时手里唯一抓着当前桶的锁（bucket-&gt;lock）
+  replace_buf-&gt;dev = dev;
+  replace_buf-&gt;blockno = blockno;
+  replace_buf-&gt;valid = 0;
+  replace_buf-&gt;refcnt = 1;
+  release(&amp;bucket-&gt;lock); // 安全释放桶锁
+  acquiresleep(&amp;replace_buf-&gt;lock);
+  return replace_buf;
+}
+</code></pre>
+<pre><code class="language-c">最后将bpin和bunpin的锁替换为桶级锁就行了：
+
+void
+bpin(struct buf *b) {
+  int idx = hash(b-&gt;dev, b-&gt;blockno);
+  acquire(&amp;hashtable[idx].lock);
+  b-&gt;refcnt++;
+  release(&amp;hashtable[idx].lock);
+}
+
+void
+bunpin(struct buf *b) {
+  int idx = hash(b-&gt;dev, b-&gt;blockno);
+  acquire(&amp;hashtable[idx].lock);
+  b-&gt;refcnt--;
+  release(&amp;hashtable[idx].lock);
+}
+</code></pre>
+<p>最终结果如下：<br>
+<img src="https://dss544.github.io/post-images/1783316629407.png" alt="" loading="lazy"></p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[xv6实验[6]-实现mmap]]></title>
+        <id>https://dss544.github.io/post/xv6shi-yan-5/</id>
+        <link href="https://dss544.github.io/post/xv6shi-yan-5/">
+        </link>
+        <updated>2026-07-01T02:19:31.000Z</updated>
+        <content type="html"><![CDATA[<p>首先定义VMA结构体，并添加进proc结构体中</p>
+<pre><code class="language-c">#define VMA_MAX  16
+
+struct VMA {
+  int valid;            // 是否有效
+  uint64 addr;    // 映射起始地址
+  int len;               // 长度
+  int prot;             // 权限
+  int flags;            // 标志位
+  int off;                // 偏移
+  struct file *f;    // 文件指针
+  uint64 mapcnt; 
+};
+
+struct proc {
+    ...
+    uint64 maxaddr;  
+    struct VMA vma[VMA_MAX];
+}
+</code></pre>
+<p>对于内存分配策略，在这里考虑使用堆区开始向下分配，堆区向下是没有分配过的空间，如果是栈区分配的话，就是和sbrk绑定在一起，还有懒分配机制。<br>
+<img src="https://dss544.github.io/post-images/1782877093121.png" alt="" loading="lazy"><br>
+所以在分配进程的函数allocproc里面添加代码：</p>
+<pre><code class="language-c">p-&gt;maxaddr = TRAPFRAME;
+</code></pre>
+<p>添加sys_mmap函数代码</p>
+<pre><code class="language-c">uint64
+sys_mmap(void)
+{
+  uint64 addr;
+  int len, prot, flags, fd, off;
+   // 获取用户传入mmap的函数
+   if( argaddr( 0 , &amp;addr ) &lt; 0 || argint( 1 , &amp;len ) &lt; 0 || argint( 2 , &amp;prot ) &lt; 0 
+   || argint( 3 , &amp;flags ) &lt; 0 || argint( 4 , &amp;fd ) &lt; 0 || argint( 5 , &amp;off ) &lt; 0 )
+     return -1;
+    struct VMA *vp;
+    struct proc *p = myproc();
+    struct file *f;
+    // 如果传入的文件描述符无效 直接return -1
+    if (fd &lt; 0 || fd &gt;= NOFILE || (f = p-&gt;ofile[fd]) == 0) return -1;
+    len = PGROUNDUP(len);
+    // MAP_SHARED表示用户修改内容最后要回写到磁盘
+    if ((flags == MAP_SHARED) &amp;&amp; (f-&gt;writable == 0) &amp;&amp; (prot&amp;PROT_WRITE))
+      return -1;
+    int idx = 0;
+    // 找到该进程的一块空闲的vma，最多16个
+    for (; idx &lt; VMA_MAX; idx++)
+    {
+      if (!p-&gt;vma[idx].valid) break;
+    }
+    if (idx == VMA_MAX) panic(&quot;no empty vma field&quot;);
+    vp = &amp;p-&gt;vma[idx];
+    vp-&gt;valid = 1;
+    // 分配虚拟地址
+    vp-&gt;addr = (p-&gt;maxaddr -= len);
+    vp-&gt;len = len;
+    vp-&gt;flags = flags;
+    vp-&gt;off = off;
+    vp-&gt;prot = prot;
+    vp-&gt;f = f;
+    // 增加文件引用
+    filedup(f);
+    return vp-&gt;addr;
+}
+</code></pre>
+<p>添加sys_munmap代码</p>
+<pre><code class="language-c">uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  // 1. 获取并解析来自用户态的系统调用参数
+  // argaddr(0, &amp;addr): 获取第一个参数（释放内存的起始虚拟地址）
+  // argint(1, &amp;length): 获取第二个参数（释放内存的字节长度）
+  // 若获取参数失败，则直接返回错误码 -1
+  if ((argaddr(0, &amp;addr) &lt; 0) || (argint(1, &amp;length) &lt; 0)) 
+    return -1;
+  struct proc *p = myproc();
+  // 2. 向上页对齐（4096字节对齐）
+  // 用户传入的释放长度可能不是页大小的整数倍，这里向上规整到页边界，以确保按页释放的正确性
+  length = PGROUNDUP(length);
+  struct VMA *vp = 0;
+  // 3. 寻找与指定内存释放区间 [addr, addr + length] 匹配的 VMA 结构
+  for (int i = 0; i &lt; VMA_MAX; i++)
+  {
+    // 条件判断：
+    // a) vma 槽位必须是有效的 (valid == 1)
+    // b) 用户请求的起始地址 `addr` 必须在 VMA 范围内
+    // c) 释放区域的右边界 `addr + length` 必须不超过当前 VMA 的结束边界
+    if (p-&gt;vma[i].valid &amp;&amp; addr &gt;= p-&gt;vma[i].addr 
+        &amp;&amp; (addr + length) &lt;= (p-&gt;vma[i].addr + p-&gt;vma[i].len))
+    {
+      vp = &amp;p-&gt;vma[i];
+      break; // 找到了完全覆盖请求区间的 VMA，跳出循环
+    }
+  }
+  // 如果遍历完 16 个槽位都没有找到匹配的有效 VMA，说明请求非法，返回错误
+  if (vp == 0) return 
+  // 4. 按页（PGSIZE = 4096）遍历请求释放的虚拟地址区间
+  for (uint64 va = addr; va &lt; addr + length; va += PGSIZE)
+  {
+    // 【核心机制：懒加载判断】
+    // 通过 walkaddr 在进程的页表中查找该虚拟地址 `va`。
+    // 如果返回 0，说明这个页处于 &quot;Lazy (懒分配)&quot; 状态：即虽然 mmap 声称拥有这块虚拟地址，
+    // 但程序在运行期间从未读写过它，因而页表里并未实际分配并映射物理页。
+    // 只有非 0 时（已经分配了真实的物理页），才需要进行写回与注销操作。
+    if (walkaddr(p-&gt;pagetable, va) != 0)
+    {
+      // 【共享映射写回机制 (MAP_SHARED)】
+      // 如果映射标志为 MAP_SHARED，说明修改必须同步到磁盘，则需要将该物理页内容写回文件
+      if (vp-&gt;flags == MAP_SHARED)
+      {
+        // 计算当前要写回的页在文件中的绝对字节偏移量：
+        // 相对偏移 = va - vp-&gt;addr (当前地址到映射起点的距离)
+        // 绝对偏移 = vma初始偏移 (vp-&gt;off) + 相对偏移
+        uint64 file_offset = vp-&gt;off + (va - vp-&gt;addr);
+        // 启动文件系统日志事务（必须成对出现，保证断电等异常时文件系统的一致性）
+        begin_op();
+        // 锁定该文件的 inode 节点，防止并发读写引发竞态冲突
+        ilock(vp-&gt;f-&gt;ip);
+        // 调用 writei 向文件写入数据：
+        // 参数2 (user_src = 1)：代表数据源 `va` 是一个用户态虚拟地址，writei 会通过页表安全地复制它
+        // 参数3 (va)：作为数据源的虚拟内存首地址
+        // 参数4 (file_offset)：待写入文件的目标绝对偏移量
+        // 参数5 (PGSIZE)：本次写入一个页面的大小（4096字节）
+        writei(vp-&gt;f-&gt;ip, 1, va, file_offset, PGSIZE);
+        // 解锁 inode 节点
+        iunlock(vp-&gt;f-&gt;ip);
+        // 结束文件系统日志事务
+        end_op();
+      }
+      // 【物理内存回收与卸载】
+      // 从进程的用户页表中解除该页面的映射，并回收其所占用的物理页。
+      // 参数 3 (npages = 1)：说明本次解除 1 个页面
+      // 参数 4 (do_free = 1)：说明解除映射后，要立即通过 kfree 归还这块物理内存给系统内核
+      uvmunmap(p-&gt;pagetable, va, 1, 1);
+    }
+  }
+  // 5. 更新及调整当前 VMA 的状态（处理部分卸载和完全卸载）
+  // 情况 A: 恰好完全卸载该 VMA 区间
+  if (addr == vp-&gt;addr &amp;&amp; length == vp-&gt;len) 
+  {
+    // 调用 fileclose 递减系统对应的文件引用计数。当计数降为0时，会自动安全释放文件描述符
+    fileclose(vp-&gt;f);
+    // 标记当前 VMA 槽位为空闲，可以被后续的 mmap 复用
+    vp-&gt;valid = 0;
+  }
+  // 情况 B: 卸载了 VMA 的头部（从起点开始的一段区间）
+  else if(addr == vp-&gt;addr)
+  {
+    vp-&gt;addr += length; // 虚拟内存起始地址往后移动
+    vp-&gt;len -= length;  // 总长度扣减
+    vp-&gt;off += length;  // 对应文件偏移量同步往后推，确保下次缺页时读对位置
+  }
+  // 情况 C: 卸载了 VMA 的尾部（一直释放到 VMA 的终点）
+  else if (addr + length == vp-&gt;addr + vp-&gt;len)
+  {
+    vp-&gt;len -= length;  // 起始地址和偏移量不需要变，仅扣减总体长度即可
+  }
+  return 0; // 成功执行，返回 0
+}
+</code></pre>
+<p>添加usertrap函数</p>
+<pre><code class="language-c">void
+usertrap(void)
+{
+    ...
+    // 捕获页面错误（Page Fault）：
+  // scause == 13 代表 Load Page Fault（读数据时缺页）
+  // scause == 15 代表 Store Page Fault（写数据时缺页）
+  else if(r_scause() == 13 || r_scause() == 15)
+  {
+    // 1. 获取触发缺页的精确虚拟地址（来自 stval 寄存器）
+    // 比如用户访问了 0x3FFFF008，但这一页还没分配物理内存，就会卡在这里
+    uint64 fault_addr = r_stval(); 
+    struct VMA *vp = 0;
+    
+    // 2. 遍历当前进程的所有 VMA，检查这个缺页地址是不是落在了某个通过 mmap 映射的合法区域内
+    for (int i = 0; i &lt; VMA_MAX; i++)
+    {
+      if( p-&gt;vma[i].valid == 1 &amp;&amp; p-&gt;vma[i].addr &lt;= fault_addr  
+          &amp;&amp; fault_addr &lt; p-&gt;vma[i].addr + p-&gt;vma[i].len )
+      {
+        vp = &amp;p-&gt;vma[i]; // 找到了对应的 VMA，说明这次缺页是合法的 mmap 访问
+        break;
+      }
+    }
+    
+    // 3. 如果地址合法（找到了对应的 VMA）
+    if (vp != 0)
+    {
+        // 将引发缺页的精确地址向下对齐到页边界（4096的倍数）。
+        // 因为操作系统的内存分配和页表映射（mappages）必须以一页（4096字节）为基本单位。
+        uint64 aligned_addr = PGROUNDDOWN(fault_addr);
+
+        // 4. 从内核的物理内存分配器中申请一个真实的物理页（4096 字节）
+        uint64 mem = (uint64) kalloc();
+        if(mem == 0)
+        {
+          // 如果系统物理内存耗尽（kalloc失败），无法分配新页，只能无奈将进程标记为死亡（killed）
+          p-&gt;killed = 1;
+        }
+        else
+        {
+          // 5. 内存分配成功，先将这块新的物理内存清零，防止残留的历史敏感数据泄露给用户态
+          memset((void *)mem, 0, PGSIZE);
+
+          // 6. 准备从文件中读取这一页的数据
+          // 锁定该文件的 inode，防止其他进程并发修改该文件，确保读取时的数据一致性
+          ilock(vp-&gt;f-&gt;ip);
+          // 计算当前缺页的这一页，对应在文件中的绝对字节偏移量：
+          // 文件绝对偏移 = VMA初始偏移量(vp-&gt;off) + (当前页虚拟地址 - VMA起始虚拟地址)
+          uint64 file_offset = vp-&gt;off + (aligned_addr - vp-&gt;addr);
+          // 调用 readi 读取文件内容到新分配的物理页中：
+          // 参数2 (0)：表示目标地址 `mem` 是一个内核物理地址，而不是用户态虚拟地址
+          // 参数3 (mem)：读取到的文件数据存放的物理内存首地址
+          // 参数4 (file_offset)：从文件的该偏移量处开始读取
+          // 参数5 (PGSIZE)：固定读取一页的大小（4096字节）
+          readi(vp-&gt;f-&gt;ip, 0, mem, file_offset, PGSIZE);
+          // 读取完毕，立刻解锁 inode，释放文件锁
+          iunlock(vp-&gt;f-&gt;ip);
+          // 7. 将这块填充了文件数据的物理页 `mem`，映射到用户的虚拟地址 `aligned_addr` 上
+          // 权限位解释：
+          // PTE_U: 允许用户态程序访问
+          // PTE_V: 标记该页表项有效
+          // (vp-&gt;prot &lt;&lt; 1): 巧妙的位移。VMA中的 PROT_READ(1)/PROT_WRITE(2) 刚好左移一位
+          // 就能对齐到 RISC-V 页表项的 PTE_R(2) 和 PTE_W(4) 权限位。
+          if(mappages(p-&gt;pagetable, aligned_addr, PGSIZE, mem, PTE_U | PTE_V | (vp-&gt;prot &lt;&lt; 1)) != 0)
+          {
+            // 如果由于某种原因（如多级页表分配失败）导致映射失败：
+            // 必须把刚刚分配的物理页释放掉（防止内存泄漏），并杀掉当前进程
+            kfree((void*)mem); 
+            p-&gt;killed = 1;
+          }
+        }
+    }
+    // 3b. 如果遍历完 VMA 发现缺页地址不属于任何一个 mmap 区域
+    else
+    {
+      // 说明这是一次彻头彻尾的非法内存越界访问（比如野指针乱指）
+      // 打印错误日志，并直接枪毙进程（p-&gt;killed = 1）
+      printf(&quot;usertrap(): unexpected scause %p pid=%d\n&quot;, r_scause(), p-&gt;pid);
+      printf(&quot;            sepc=%p stval=%p\n&quot;, r_sepc(), r_stval());
+      p-&gt;killed = 1;
+    }
+  }
+    ...
+}
+</code></pre>
+<p>在fork函数结尾里面添加子进程的复制内容</p>
+<pre><code class="language-c">int
+fork(void){
+    ...
+    acquire(&amp;np-&gt;lock);
+    np-&gt;state = RUNNABLE;
+    np-&gt;maxaddr = p-&gt;maxaddr;
+    for (int i = 0; i &lt; VMA_MAX; ++i)
+    {
+        if (p-&gt;vma[i].valid)
+        {
+            filedup(p-&gt;vma[i].f);
+            memmove(&amp;np-&gt;vma[i], &amp;p-&gt;vma[i], sizeof(struct VMA));
+        }
+    }
+    release(&amp;np-&gt;lock);
+    return pid;
+}
+</code></pre>
+<p>在exit函数开头添加</p>
+<pre><code class="language-c">void exit(int status)
+{
+  struct proc *p = myproc();
+  if(p == initproc)
+    panic(&quot;init exiting&quot;);
+
+  for (int i = 0; i &lt; VMA_MAX; i++)
+  {
+    if (p-&gt;vma[i].valid == 1)
+    {
+      struct VMA* vp = &amp;p-&gt;vma[i];
+      for (uint64 addr = vp-&gt;addr; addr &lt; vp-&gt;addr+vp-&gt;len; addr+=PGSIZE)
+      {
+        if (walkaddr(p-&gt;pagetable, addr) != 0)
+        {
+          if (vp-&gt;flags == MAP_SHARED)
+          {
+              uint64 file_offset = vp-&gt;off + (addr - vp-&gt;addr);
+            
+            begin_op(); // 开启文件系统事务（重要！）
+            ilock(vp-&gt;f-&gt;ip);
+            
+            // 使用 writei 写回磁盘
+            writei(vp-&gt;f-&gt;ip, 1, addr, file_offset, PGSIZE);
+            
+            iunlock(vp-&gt;f-&gt;ip);
+            end_op();   // 结束事务
+          }
+          uvmunmap(p-&gt;pagetable, addr, 1, 1);
+        }
+      }
+      
+    }
+  }
+    ...
+}
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[xv6网络]]></title>
+        <id>https://dss544.github.io/post/xv6-wang-luo/</id>
+        <link href="https://dss544.github.io/post/xv6-wang-luo/">
+        </link>
+        <updated>2026-06-22T02:12:42.000Z</updated>
+        <content type="html"><![CDATA[<p><img src="https://dss544.github.io/post-images/1782094399620.png" alt="" loading="lazy"><br>
+ARP Request（询问谁有10.0.2.15）</p>
+<ol>
+<li>前14个字节:以太网头部<br>
+ffff ffff ffff：目的 MAC <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 全 1 广播，整个局域网都收听。<br>
+5255 0a00 0202：源 MAC <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 询问方（10.0.2.2）的物理地址。<br>
+0806：以太网类型 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 代表后面是 ARP 包。</li>
+<li>后 28 字节：进入 struct arp 结构体紧接着 0806 往后数：<br>
+0001 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> hrd（以太网）<br>
+0800 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> pro（IPv4 协议）<br>
+06   <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> hln（MAC长 6）<br>
+04   <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> pln（IP长 4）<br>
+0001 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> op（ARP_OP_REQUEST = 1，代表这是请求包）<br>
+5255 0a00 0202 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> sha（发起人的 MAC）<br>
+0a00 0202       <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> sip（发起人的 IP，十六进制转十进制就是 10.0.2.2）<br>
+0000 0000 0000 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> tha（重点！因为发起人不知道对方的 MAC 到底是多少，所以这里全填 0 占位）<br>
+0a00 020f       <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> tip（被询问的目标 IP，0x0f 换算成十进制是 15，即 10.0.2.15）</li>
+</ol>
+<p><img src="https://dss544.github.io/post-images/1782096469421.png" alt="" loading="lazy"><br>
+UDP Request（询问谁有10.0.2.15）<br>
+<em><strong>第一步：剥离前 14 字节（以太网头部）</strong></em><br>
+在进入红线之前，最开头的 14 个字节是永远不变的以太网外壳：ffff ffff ffff：目的 MAC 地址（广播）。<br>
+5254 0012 3456：源 MAC 地址（xv6 虚拟网卡的地址）。<br>
+0800：以太网类型 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 铁证如山，告诉内核后面装的是 IP 数据包。</p>
+<p><em><strong>第二步：硬核对齐红线内的 20 字节（struct ip）</strong></em><br>
+紧接着 0800 往后，就是红线划分的边界。我们把红线里的数据连续抄下来：<br>
+45 00 00 2f 00 00 00 00 64 11 3e ae 0a 00 02 0f 0a 00 02 02<br>
+（共 20 字节，每个数代表 1 字节）</p>
+<ol>
+<li>45 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_vhl (1字节)拆解：高 4 位是 4（代表 IPv4）；低 4 位是 5（代表首部长度是 5 个 32位字，即 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>5</mn><mo>×</mo><mn>4</mn><mo>=</mo><mn>20</mn></mrow><annotation encoding="application/x-tex">5 \times 4 = 20</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">5</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">0</span></span></span></span> 字节）。这完美证明了该 IP 报头没有任何可选选项，就是标准的 20 字节。</li>
+<li>00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_tos (1字节)服务类型，这里是默认值 0。</li>
+<li>00 2f <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_len (2字节，总长度)计算：十六进制的 0x002f 转换成十进制是 47。含义：代表从 45 开始，整个 IP 包（含 IP 头 + UDP 头 + 数据）总共长 47 字节。肉眼验证：你可以数数红线起点 45 一直到图片最后末尾的 21（也就是感叹号），刚好就是 47 个字节！</li>
+<li>00 00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_id (2字节)报文标识符，这里全为 0。</li>
+<li>00 00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_off (2字节)片偏移，全为 0，代表这个包很小，没有被砍成碎片。</li>
+<li>64 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_ttl (1字节，生存时间)十六进制的 0x64 转换成十进制是 100。表示这个包在互联网上最多能被路由器转发 100 次。</li>
+<li>11 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_p (1字节，协议) 【核心关键！】转换：十六进制的 0x11 转换成十进制就是 17！含义：对照上面的代码：#define IPPROTO_UDP 17。这告诉内核：“我这个 IP 包的里面，套着一个 UDP 协议包！”</li>
+<li>3e ae <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_sum (2字节)上一题我们刚讲过的 IP 首部校验和。这是由 xv6 内核算好填进去的二进制数，用来确保前 20 字节在传输中没坏。</li>
+<li>0a 00 02 0f <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_src (4字节，源 IP)十六进制换算：0x0a <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 10，0x00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 0，0x02 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 2，0x0f <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 15。结果：10.0.2.15（发起方 xv6 的 IP），完全对齐了第一行提示里的 IP 10.0.2.15。<br>
+10.0a 00 02 02 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_dst (4字节，目的 IP)十六进制换算：0x0a <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 10，0x00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 0，0x02 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 2，0x02 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 2。结果：10.0.2.2（接收方 QEMU 网关的 IP）。红线到这里正好闭合。</li>
+</ol>
+<p><em><strong>第三步：红线后面（07d0...）又是什么？</strong></em><br>
+由于刚才第 7 步中 ip_p 的值是 11（UDP），所以红线右边紧挨着的数据，立刻无缝进入了 UDP 的世界：07 d0：UDP 源端口。十六进制 0x07d0 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 十进制 2000。对齐了提示里的 10.0.2.15.2000！64 03：UDP 目的端口。十六进制 0x6403 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 十进制 25603。对齐了提示里的 10.0.2.2.25603！，然后再往后走0x001b，是传送数据的长度，最后两字节00 00两字节是校验的，在这里关闭了，跨过 UDP 的 8 字节报头后，就是最右边通过 ASCII 码显示出来的真正人类数据了：a message from xv6! （一封来自 xv6 的信！）</p>
+<p><a href="https://en.wikipedia.org/wiki/Address_Resolution_Protocol">https://en.wikipedia.org/wiki/Address_Resolution_Protocol</a><br>
+<em><strong>ARP协议(Address Resolution Protocol)</strong></em><br>
+ARP 协议只能在同一个局域网（广播域）内工作，通过广播获取目标 IP 对应的 MAC 地址，路由器不会转发 ARP 广播。当主机访问同一网段的设备时，会先 ARP 查询目标主机的 MAC，然后直接发送数据；当访问不同网段的主机时，由于 ARP 广播无法跨越路由器，因此主机不会查询远端主机的 MAC，而是先获取默认网关（路由器本地网卡）的 MAC，并将数据帧发送给路由器。路由器收到后，根据 IP 头中的目标 IP 查询路由表，确定下一跳，再重新封装新的二层 MAC 地址（源 MAC 为路由器当前出口网卡的 MAC，目的 MAC 为下一跳设备的 MAC）并转发出去。因此，MAC 地址是逐跳变化的，而源 IP 和目的 IP 在整个传输过程中保持不变（不考虑 NAT 等特殊情况）。本质上，交换机根据 MAC 地址转发，而路由器根据 IP 地址转发。<br>
+路由器确实有很多“网卡”：在网络里这叫接口（Interface）。路由器一个接口连你的电脑（IP: 192.0.0.1），另一个接口连单片机（IP: 10.0.0.1）。<br>
+ARP 的目标是网关：当你的电脑发现目标 10.0.0.5 和自己不在同一个网段时，它绝对不会直接去给 10.0.0.5 发 ARP。它会说：“这题超纲了，我找我班主任（默认网关 192.0.0.1）。” 于是电脑发送 ARP 请求网关的 MAC 地址。<br>
+数据包的封装：IP层（三层）：源 IP = 192.0.0.2，目的 IP = 10.0.0.5（IP 沿途死都不变）。MAC层（二层）：源 MAC = 你的电脑 MAC，目的 MAC = 路由器的 192.0.0.1 接口 MAC。<br>
+路由器的偷天换日（二层抹除）：路由器收到这个包，把二层 MAC 头直接撕掉。查路由表发现 10.0.0.5 在另一个接口。<br>
+重新封装发给单片机：路由器从 10.0.0.1 接口把包丢给单片机。此时重新打包二层：源 MAC（也就是你说的 SHA） <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 变成 路由器 10.0.0.1 接口的 MAC！目的 MAC <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 变成 单片机的 MAC。你这个理解拿去大厂面试网络内核岗，面试官都要对你刮目相看！你提到的这个不叫 ARP 中介，它叫 三层路由转发（Layer 3 Routing）。</p>
+<p>0x0806这个Ether Type被用来标识ARP帧</p>
+<pre><code class="language-c">【以太网帧头 14B】
+DstMAC(6) | SrcMAC(6) | Type=0x0806(2)
+
+【ARP数据 28B】
+HWType(2) | ProtoType(2) | HWLen(1) | IPLen(1) | OpCode(2)
+SenderMAC(6) | SenderIP(4)
+TargetMAC(6) | TargetIP(4)
+struct arp_packet
+{
+    uint16_t hw_type;      // 硬件类型 1就代表以太网Ethernet
+    uint16_t proto_type;   // 协议类型 0x0800-&gt;IPv4 0x86DD-&gt;IPv6
+    uint8_t  hw_len;       // MAC地址长度 
+    uint8_t  proto_len;    // IP地址长度
+    uint16_t opcode;       // 操作码 1-&gt;ARP Request 2-&gt;ARP Reply
+
+    uint8_t  sender_mac[6];// 发送者MAC地址（SHA）
+    uint8_t  sender_ip[4]; // 发送者IP地址（SPA）
+
+    uint8_t  target_mac[6];// 目标MAC地址（THA）
+    uint8_t  target_ip[4]; // 目标IP地址（TPA）
+};
+</code></pre>
+<p>假如A为</p>
+<pre><code class="language-c">IP : 192.168.1.10
+MAC: 00:11:22:33:44:55
+</code></pre>
+<p>想找</p>
+<pre><code class="language-c">192.168.1.20
+</code></pre>
+<p>发送的ARP Request</p>
+<pre><code class="language-c">hw_type   = 1;
+proto_type= 0x0800;
+hw_len    = 6;
+proto_len = 4;
+opcode    = 1;
+sender_mac = 00:11:22:33:44:55;
+sender_ip  = 192.168.1.10;
+target_mac = 00:00:00:00:00:00;
+target_ip  = 192.168.1.20;
+</code></pre>
+<p><img src="https://dss544.github.io/post-images/1782118283360.png" alt="" loading="lazy"><br>
+在将数据包发送到B之前，A会先发送一条ARP请求消息——该消息的地址为广播MAC地址FF:FF:FF:FF:FF:FF，同时请求IP地址为192.168.0.55的节点给出响应。网络中的所有节点都会收到这条消息，但只有拥有该IP地址的B会回复。B则会发送一条包含自身MAC地址的ARP响应消息，A会收到这条消息。之后，A就会使用B’的MAC地址来发送数据包了。<br>
+通常，网络节点会维护一个用于关联IP地址与MAC地址的查询缓存。在这个例子中，如果A已经将相关查询信息存储在缓存中，那么它就无需再发送ARP请求了。同样地，当B收到该请求后，它也可以将相关查询信息存储起来，这样B日后需要向A发送数据包时，就不必再通过ARP来查找对方的MAC地址了。最后，当A收到ARP响应后，它可以将该查询信息存储起来，以便将来有类似的数据包需要发送时能够直接使用这些信息。<br>
+<em><strong>ARP探测</strong></em><br>
+ARP 探测（ARP Probe），它是计算机在正式使用一个 IP 地址之前，用来检测局域网内有没有其他人也在用这个 IP（即“IP 地址冲突检测”） 的一种保护机制。</p>
+<p>无论是手动配置，还是DHCP自动分配IP，在把IP分配到网卡之前，都要在局域网里面连续广播几次ARP探测包。如果有人回应代表这个IP已经被占据，没有的话自己就可以使用。探测包数据格式如下：</p>
+<pre><code class="language-c">SHA (Sender Hardware Address - 发送方 MAC)：填你自己的真实 MAC 地址。
+SPA (Sender Protocol Address - 发送方 IP)：填 0.0.0.0
+THA (Target Hardware Address - 目标 MAC)：填全 0（因为你本来就不知道谁在用）。
+TPA (Target Protocol Address - 目标 IP)：填你想探测的、刚拿到的那个 IPv4 地址（比如 192.168.1.50）。
+</code></pre>
+<p><em><strong>ARP 公告</strong></em><br>
+ARP 公告（Gratuitous ARP，GARP）是一种特殊的 ARP 报文，它并不是为了查询 MAC 地址，而是主动向局域网中的其他主机宣布自己的 IP-MAC 映射关系，以更新其他主机的 ARP 缓存。GARP 可以使用 ARP Request 或 ARP Reply 实现，常用于主机启动、网卡更换、IP 冲突检测、负载均衡以及零配置网络等场景。由于主机收到 GARP 后会自动更新 ARP 表，因此攻击者也可以伪造 GARP 报文，将自己的 MAC 地址与网关 IP 关联，从而实施 ARP 欺骗和中间人攻击。公告可以是Request也可以是Reply：</p>
+<pre><code class="language-c">Request
+
+opcode = 1 (Request)
+SHA = 00:11:22:33:44:55
+SPA = 192.168.1.10
+THA = 00:00:00:00:00:00
+TPA = 192.168.1.10
+
+Reply
+
+opcode = 2
+SHA = 00:11:22:33:44:55
+SPA = 192.168.1.10
+THA = 00:11:22:33:44:55
+TPA = 192.168.1.10
+</code></pre>
+<p><em><strong>UDP协议(User Datagram Protocol)</strong></em><br>
+UDP 发包不握手、丢包不管、乱序不理；但它报头只有 8 字节，速度极快、延迟极低，是视频直播、实时游戏和嵌入式轻量级通信的绝对王者。<br>
+TCP会对每一个连接进来的设备创建一个TCB（传输控制块），而UDP没有。TCP在C语言代码中连续两次发送，他可能会把两次发送的字符一起发送，但是UDP是发送椅子，立马在内存给他套上一个8字节UDP头发送出去。</p>
+<p>UDP强行将IP地址和端口号(0-65535)焊接在一起，内核网络栈收到包后，直接看包头的16位端口号，然后扔到对应的C语言进程中，这就叫复用。<br>
+这65536个端口被分成三块，(0~1023)超级用户才能使用，比如80是HTTP网页，SSH是22；<br>
+(1024~49151)是留给各大知名软件登记，比如MySQL数据库默认3306，自己写常用8888 或 9999。<br>
+(49152 ~ 65535)动态/临时端口。0端口发送数据是告诉对面不用回信息。<br>
+“一个 UDP 包，应用层调用 sendto 时，一次最多能发多大的数据？”<br>
+底层 IP 数据包的最大体积是 65535 字节。<br>
+IP 层自己要占掉 20 字节的 IP 头。<br>
+UDP 层自己要占掉 8 字节的 UDP 头。<br>
+留给你应用层的真实数据容量只剩：65535 - 20 - 8 = 65507 字节。<br>
+如果你代码里一次性 sendto 超过了 65507 字节，内核会直接给你报错（Message too long）。</p>
+<p>按照 RFC 1071 的标准定义，UDP 校验和计算采用的是 16位反码求和（Ones' Complement Sum）。大白话就是：把数据切成一个个 16 位的字相加，如果相加过程中最高位产生了进位（溢出到了第 17 位），必须立刻把这个进位绕回到最低位加进去，最后按位取反。源代码如下：</p>
+<pre><code class="language-c">// lwIP 中的进位折叠核心代码
+uint32_t sum = 0;
+// 1. 无脑狂加，根本不管 16 位的进位溢出
+for (int i = 0; i &lt; count; i++) {
+    sum += data[i]; 
+}
+// 2. 终极一气呵成进位折叠
+while (sum &gt;&gt; 16) {
+    sum = (sum &amp; 0xFFFF) + (sum &gt;&gt; 16);
+}
+// 3. 最后取反
+uint16_t checksum = (uint16_t)(~sum);
+</code></pre>
+<p>为什么可以把所有的进位积压到一个 32 位的变量里，留到最后才一次性折叠？中间产生的进位如果不立刻加上去，难道不会影响后续的计算结果吗？<br>
+如果按照字面意思，产生进位立即处理，代码如下：</p>
+<pre><code class="language-c">uint32_t sum = 0;
+for (int i = 0; i &lt; count; i++) {
+    sum += data[i];
+    // 等价于sum%=0xffff
+    if (sum &gt; 0xFFFF) {          // 发现第 17 位
+        sum = (sum &amp; 0xFFFF) + 1; // 立刻砍下来加到尾部
+    }
+}
+</code></pre>
+<p>这种写法的逻辑正确，但在极度缺乏算力的单片机（MCU）上却是致命的：每次循环都要进行一次 if 分支判断和额外的掩码加法操作，这会白白消耗大量宝贵的 CPU 时钟周期。(x+y)%b = ((x%b) + (y%b) )%b，如果我有x个瓶子，我加上y个瓶子，最后我有(x+y)%0xffff个瓶子等价于(x%0xffff+y)%0xffff</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[xv6实验[4]-文件系统]]></title>
+        <id>https://dss544.github.io/post/xv6-shi-yan-4-wen-jian-xi-tong/</id>
+        <link href="https://dss544.github.io/post/xv6-shi-yan-4-wen-jian-xi-tong/">
+        </link>
+        <updated>2026-06-21T07:43:41.000Z</updated>
+        <content type="html"><![CDATA[<p>xv6的文件系统分为7层，每一层都为上层提供更高阶的抽象，它们分别是：<br>
++--------------------------------------------+<br>
+|        第 7 层：文件描述符层 (File Descriptor) |  &lt;-- 用户直接交互的接口 (fd)<br>
++--------------------------------------------+<br>
+|        第 6 层：路径名层 (Pathname)          |  &lt;-- 解析类似 /a/b/c 的多级路径<br>
++--------------------------------------------+<br>
+|        第 5 层：目录层 (Directory)           |  &lt;-- 将文件名映射为 Inode 编号<br>
++--------------------------------------------+<br>
+|        第 4 层：Inode 层 (Inode)            |  &lt;-- 提供单一文件抽象，管理元数据与块<br>
++--------------------------------------------+<br>
+|        第 3 层：日志层 (Logging)            |  &lt;-- 事务机制，保证崩溃恢复的原子性<br>
++--------------------------------------------+<br>
+|        第 2 层：块缓冲层 (Buffer Cache)      |  &lt;-- 缓存磁盘块，同步并发访问<br>
++--------------------------------------------+<br>
+|        第 1 层：磁盘/硬件层 (Disk)          |  &lt;-- 最底层的物理扇区读写<br>
++--------------------------------------------+<br>
+其中，每一层各司其职，核心功能如下：</p>
+<p><strong>1. 磁盘/硬件层 (Disk)</strong><br>
+负责直接与虚拟化硬件（如 QEMU 中的 VirtIO 磁盘驱动）打交道，以物理扇区 (Sector) 为单位对存储设备进行原始的读取和写入。它完全不关心什么是文件、什么是目录，只认磁盘地址。</p>
+<p><strong>2. 块缓冲层 (Buffer Cache / Bcache)</strong><br>
+有两个核心目的：缓存（Caching）与同步（Synchronization）。<br>
+为了减少慢速的磁盘 I/O，它将频繁访问的磁盘块缓存在内存中；<br>
+同时，它为每个缓存块分配一把锁，确保在多核并发环境下，同一时间只有一个内核线程能够修改某个磁盘块，防止数据被改烂。</p>
+<p><strong>3. 日志层 (Logging)</strong><br>
+专门用来进行崩溃恢复（Crash Recovery）。它引入了数据库中“事务（Transaction）”的概念。当上层要同时修改多个磁盘块时（比如创建文件），日志层会把这些修改先记录在一个特殊的日志区。如果系统在中途突然断电崩溃，重启时内核可以通过重放日志，确保整个操作“要么全部成功，要么全部撤销”，绝对不会在磁盘上留下半对半错的脏数据。</p>
+<p><strong>4. Inode 层 (Inode)</strong><br>
+提供了单一文件的抽象。在这一层，每个文件都由一个被称为 inode（索引节点）的物理结构表示。inode 里面记录了文件的元数据（如文件类型、大小、物理链接数 nlink），以及一组物理块号数组（指向数据真正存放在磁盘的哪些块）。它还负责向内核提供文件的读写接口（readi/writei）。</p>
+<p><strong>5. 目录层 (Directory)</strong><br>
+实现了文件夹/目录的功能。在 xv6 中，目录本质上是一种特殊类型的 Inode，它的内容不是普通文本，而是一行行的目录项（Directory Entries）。每个目录项极其简单，只包含两个东西：【文件名】和【Inode 编号 (inum)】。这一层的作用就是通过文件名，查表找到对应的 Inode 身份证号。</p>
+<p><strong>6. 路径名层 (Pathname)</strong><br>
+提供层级化的路径解析。它实现了像 sys_open 里的路径查找功能（核心函数为 namei）。当你给它一个长路径（如 /usr/rtm/xv6/fs.c）时，路径名层会像“剥洋葱”一样，从根目录开始递归地一层层解析目录，直到揪出最终那个文件的 Inode 指针。</p>
+<p><strong>7. 文件描述符层 (File Descriptor)</strong><br>
+文件系统的最高统治者与大门，直接对接应用层的系统调用（如 open、read、write、close）。它把底层的各种资源（无论是真正的磁盘文件、控制台设备文件，还是内存里的管道 Pipe），统一抽象成了进程账本里一个个小小的整数索引——文件描述符 (fd)。这实现了 Unix 经典的“一切皆文件”的最高设计哲学，极大地简化了应用层程序员的开发难度。</p>
+<h1 id="large-files">Large files</h1>
+<p>这一个实验是要使XV6支持更大的文件。原始XV6中的文件块号dinode.addr是使用一个大小为12的直接块表以及一个大小为256的一级块表，即文件最大为12+256块。可以通过将一个直接块表中的项替换为一个二级块表来使系统支持大小为11+256+256*256个块的文件。<br>
+首先修改对应宏</p>
+<pre><code class="language-c">#define NDIRECT 11
+#define NINDIRECT (BSIZE / sizeof(uint))
+#define MAXFILE (NDIRECT + NINDIRECT + NINDIRECT*NINDIRECT)
+struct dinode {
+  ...
+  uint addrs[NDIRECT+2]; 
+};
+struct inode {
+  ...
+  uint addrs[NDIRECT+2];
+};
+</code></pre>
+<p>之后修改bmap函数，该函数的功能是将文件的<strong>逻辑块号</strong>映射为磁盘的<strong>物理块号</strong>。在程序员看来文件是一个连续的字节流，比如一个4KB文件，被划分为4个块，文件块 0, 块 1, 块 2, 块 3）。这叫逻辑块号 (bn)。但是，在磁盘物理层，这 4 个块在磁盘上可能根本不是连续存放的（可能块 0 在磁盘的第 500 号扇区，块 1 跑到第 800 号扇区去了）。bmap 的存在，就是为了遮蔽这种物理磁盘的碎片化和复杂性。它对上层宣称：“你只管传给我文件的第N个块，我保证帮你定位到它在磁盘上的绝对物理地址。”</p>
+<pre><code class="language-c">static uint
+bmap(struct inode *ip, uint bn)
+{
+        ...
+    // ==========================================
+    // 阶段 1：直接索引块查找 (0 ~ NDIRECT-1)
+    // ==========================================
+  if(bn &lt; NDIRECT){
+        ...
+  }
+  // ==========================================
+  // 阶段 2：一级间接索引块查找 (0 ~ NINDIRECT-1)
+  // ==========================================
+  bn -= NDIRECT;
+
+  if(bn &lt; NINDIRECT){
+        ...
+  }
+    // ==========================================
+    // 阶段 3：二级间接索引块查找 (0 ~ NINDIRECT*NINDIRECT - 1)
+    // ==========================================
+  bn -= NINDIRECT;
+  uint indirect_idx, final_offset;
+
+  if (bn &lt; NINDIRECT * NINDIRECT)
+  {
+    // indirect_idx: 代表去二级块里的第几个“一级块槽位”去找
+    // final_offset: 代表去最终的一级块里的第几个“数据块槽位”去读
+    indirect_idx = (bn/ NINDIRECT);
+    final_offset = (bn % NINDIRECT);
+    // 【第一层套娃】检查并获取“二级间接块”本身的物理地址
+    if((addr = ip-&gt;addrs[NDIRECT+1]) == 0)
+      ip-&gt;addrs[NDIRECT+1] = addr = balloc(ip-&gt;dev);
+
+    bp = bread(ip-&gt;dev, addr);
+    a = (uint*)bp-&gt;data;
+    // 【第二层套娃】读取二级间接块，寻找对应的一级间接块地址
+    if ((addr = a[indirect_idx]) == 0)
+    {
+      // 如果这个分支下的一级索引块还没建，现场动态向磁盘申请一个索引块
+      a[indirect_idx] = addr = balloc(ip-&gt;dev);
+      // 记录修改二级块的日志
+      log_write(bp);
+    }
+    brelse(bp);
+
+    bp = bread(ip-&gt;dev, addr);
+    a = (uint*)bp-&gt;data;
+    if ((addr=a[final_offset]) == 0)
+    {
+        // 如果最终存储文件数据的数据块还没创建，现场分配一个真正的数据物理块
+      a[final_offset]  = addr = balloc(ip-&gt;dev);
+      // 记录修改一级块的日志
+      log_write(bp);
+    }
+     brelse(bp);
+    return addr;
+  }
+
+  panic(&quot;bmap: out of range&quot;);
+}
+</code></pre>
+<p>在 xv6 中，bmap() 内部对 ip-&gt;addrs[] 的修改属于 Inode 元数据修改，内核采用‘延迟合并提交’的策略，后续统一由上层的 iupdate(ip) 函数将其同步至磁盘的 Inode 区并记录日志；而对间接块内部数组 a[] 的修改属于 外部索引块的内容破坏，必须在 bmap 内部现场调用 log_write(bp) 提交事务。</p>
+<h1 id="symbolic-links">Symbolic links</h1>
+<p>这一个实验是要实现符号链接，符号链接就是在文件中保存指向文件的路径名，在打开文件的时候根据保存的路径名再去查找实际文件。与符号链接相反的就是硬链接，硬链接是将文件的inode号指向目标文件的inode，并将引用计数加一。<br>
+符号链接与硬链接的本质区别：<br>
+硬链接 (Hard Link)：本质是多个目录项指向同一个 inode 编号，并通过增加 inode 的引用计数（nlink）来维持文件生命周期。它的局限性在于不能跨磁盘文件系统，也不能链接到目录。<br>
+符号链接 (Soft Link)：它是一个独立存在的全新文件，拥有自己独立的 inode（类型为 T_SYMLINK）。只不过它的数据块里存的不是普通的文本内容，而是目标文件的路径字符串。当系统打开软链接时，内核会“顺藤摸瓜”，读取里面的路径并重新重定向到真正的目标文件。</p>
+<p>symlink的系统调用实现起来也很简单，就是创建一个inode，设置类型为T_SYMLINK，然后向这个inode中写入目标文件的路径就行了。</p>
+<pre><code class="language-c">uint64 sys_symlink(void)
+{
+  char target[MAXPATH];
+  char path[MAXPATH];
+  int len;
+
+  // 1. 初始化缓冲区，防止内存脏数据
+  memset(target, 0, sizeof(target));
+  memset(path, 0, sizeof(path));
+
+  // 2. 从用户态安全地拉取系统调用参数 (0: 目标路径, 1: 软链接存放路径)
+  if (argstr(0, target, MAXPATH) &lt; 0 || argstr(1, path, MAXPATH) &lt; 0 ) {
+    return -1;
+  }
+  
+  // 计算实际需要写入磁盘的路径长度 (必须包含字符串终止符 '\0')
+  len = strlen(target) + 1;
+
+  // ================= 开启文件系统事务 =================
+  begin_op();
+  struct inode *ip;
+
+  // 3. 在指定 path 创建一个崭新的 inode，文件类型设置为 T_SYMLINK
+  // 后两个参数 0,0 是主次设备号，仅设备文件可用，软链接填 0 即可
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+  // 4. 将目标路径 target 作为“文件数据”写入到这个 inode 的数据块中
+  if(writei(ip, 0, (uint64)target, 0, len) != len) {
+    // 【踩坑点/防死锁】如果写入失败，必须先释放 inode 锁和引用，再关闭事务！
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  // 5. 顺利完成，优雅释放当前 inode 并提交日志事务
+  iunlockput(ip);
+  end_op();
+  return 0;
+}
+
+</code></pre>
+<pre><code class="language-c">#define O_NOFOLLOW 0x800
+#define T_SYMLINK 4
+uint64
+sys_open(void){
+    ...
+    if(omode &amp; O_CREATE){
+        ...
+    }
+    else {
+        ...
+    }
+    // 此时的 ip 已经是经过解析且被锁住 (ilocked) 的状态
+     if (ip-&gt;type == T_SYMLINK) {
+   // 如果用户没带 O_NOFOLLOW 标志，则开始执行“顺藤摸瓜”追踪逻辑
+    if (!(omode &amp; O_NOFOLLOW)){
+      int cycle = 0;
+      char target[MAXPATH];
+      // 只要当前找到的依然是软链接，就继续深入追踪
+      while(ip-&gt;type == T_SYMLINK){
+          if (cycle &gt;= 10){
+            iunlockput(ip);
+            end_op();
+            return -1;
+          }
+          cycle++;
+          memset(target,0,sizeof(target));
+          // 读取当前软链接内部存储的“目标路径”
+          if (readi(ip, 0, (uint64)target, 0, MAXPATH) &lt;= 0) {
+            iunlockput(ip);
+            end_op();
+            return -1;
+          }
+          iunlockput(ip);
+          // 寻找下一个inode
+          if((ip = namei(target)) == 0){
+            end_op();
+            return -1;
+          }
+          ilock(ip);
+      }
+    }
+  }
+    ...
+}
+</code></pre>
+<p>这两个实验让我对文件系统认识加深了，不过还是觉得好难，什么时候能看懂linux文件管理代码。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[xv6文件系统]]></title>
+        <id>https://dss544.github.io/post/xv6-wen-jian-xi-tong/</id>
+        <link href="https://dss544.github.io/post/xv6-wen-jian-xi-tong/">
+        </link>
+        <updated>2026-06-20T01:43:16.000Z</updated>
+        <content type="html"><![CDATA[<figure data-type="image" tabindex="1"><img src="https://dss544.github.io/post-images/1781919839176.png" alt="" loading="lazy"></figure>
+<p>##孤儿文件导致磁盘空间泄漏<br>
+1、地毯式搜救<br>
+当系统崩溃重启后，操作系统不急着开机，而是先把把整个磁盘从头到尾完完整整地扫描一遍（在 Linux 里这个工具叫 fsck）。fsck会把“Bitmap 标记为已占用的块”和“所有文件夹里登记的文件名”进行对账。如果发现某个 inode 在磁盘上占着坑，但全磁盘没有任何一个文件夹包含它，那就判定它是“孤儿”，直接在开机前把它释放掉。<br>
+缺点：太慢，每次都要从头扫描磁盘。<br>
+2、孤儿链表<br>
+不需要扫描全盘。只要当一个文件的名字被删掉（nlink == 0）、但内存里还有人开着它（ref != 0）的那一瞬间，内核立刻在磁盘的一个固定特殊位置（比如 超级块 Superblock 或者日志区）的“小本本”上记下一笔：“报告，inode 编号 5 变成孤儿了！”正常结束：如果程序正常关闭了文件，内核把空间释放后，会顺手把小本本上的这行字擦掉。崩溃恢复：如果中途突然断电，重启时系统不需要扫描全盘，只需要直奔这个“小本本”。只要发现小本本上还留着 inode 编号 5，就知道它是个没来得及处理的孤儿，直接把它清空即可。<br>
+优点：极快，开机速度不受磁盘大小影响（现代 Linux 文件系统如 ext4、XFS 均采用类似机制）。</p>
+<p>##防止文件并发撞车<br>
+线程A在查/a/b的时候，会先把a的锁释放 在取申请b的锁（为什么不先申请b在释放a呢？我的理解是可能导致死锁 比如线程1要在/a 要去/b就要获取/b的锁 而线程2在/a/b 要去/a 就要申请a的锁，结果两个线程互锁导致死锁）。但此时可能回来一个线程B，他速度更快获取/a的锁然后删除了b。此时线程A还没来得及给b加锁（处于真空期），结果第三个线程来了，通过balloc正好申请到b这个物理内存，用来存文本数据。这是A醒来发现目录b变成文本文件了，但他还是用struct dirent数组来解析，就会导致错误。<br>
+xv6的解决方法：线程A在释放/a的锁之前，先找到b的inum，然后使用iget把b的应用计数加1在释放掉/a的锁，这样此时线程B就无法删除它，因为unlink函数中调用iput释放空间的条件是<code>if(ip-&gt;ref == 1 &amp;&amp; ip-&gt;valid &amp;&amp; ip-&gt;nlink == 0)</code>，所以线程B只能让nlink为0，ref--，而不能删除数据块。</p>
+<h2 id="linux-硬链接与软链接核心特性对比">🔗 Linux 硬链接与软链接核心特性对比</h2>
+<p>在 Linux/Unix 系统中，**硬链接（Hard Link）<strong>和</strong>软链接（Soft Link/Symbolic Link）**是两种完全不同的“文件别名”机制。为了方便对比理解，它们的底层区别和特性已汇总在下表中：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">特性</th>
+<th style="text-align:left">硬链接 (Hard Link)</th>
+<th style="text-align:left">软链接 (Soft Link / Symbolic Link)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>Inode 编号</strong></td>
+<td style="text-align:left"><strong>与源文件相同</strong> <br><em>(共享同一个物理文件真身)</em></td>
+<td style="text-align:left"><strong>与源文件不同</strong> <br><em>(自己是一个独立的新文件)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>磁盘空间</strong></td>
+<td style="text-align:left"><strong>不占用额外空间</strong> <br><em>(仅在所属目录的数据块里多写一行记录)</em></td>
+<td style="text-align:left"><strong>占用极小空间</strong> <br><em>(需要单独的磁盘块来存储目标路径字符串)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>跨分区/跨盘</strong></td>
+<td style="text-align:left">❌ <strong>绝对不行</strong> <br><em>(每个分区的 Inode 独立排号，无法跨盘映射)</em></td>
+<td style="text-align:left"><strong>完全可以</strong> <br><em>(内部存的是路径字符串，顺藤摸瓜即可)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>对目录使用</strong></td>
+<td style="text-align:left">❌ <strong>绝对不行</strong> <br><em>(避免系统内部形成环路死循环，内核严格禁止)</em></td>
+<td style="text-align:left"><strong>完全可以</strong> <br><em>(非常适合为很深的文件夹创建快捷方式)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>源文件被删后</strong></td>
+<td style="text-align:left"><strong>完好无损</strong> <br><em>(只要文件的物理链接数 <code>nlink &gt; 0</code>，数据就依然可访问)</em></td>
+<td style="text-align:left">❌ <strong>链接失效</strong> <br><em>(变成“死链接”，类似于 Windows 快捷方式找不到源头)</em></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>创建命令</strong></td>
+<td style="text-align:left"><code>ln 源文件 硬链接名</code></td>
+<td style="text-align:left"><code>ln -s 源文件 软链接名</code> <br><em>(多了一个 <code>-s</code> 参数)</em></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="快速记忆大白话场景模拟">💡 快速记忆大白话场景模拟</h3>
+<p>我们可以把磁盘上的<strong>真实数据</strong>想象成一本<strong>真正的纸质书</strong>：</p>
+<ul>
+<li><strong>硬链接</strong>：相当于你在它的封面上贴了两个名字标签（比如左边写《微积分》，右边写《大一教材》）。哪怕你把《微积分》这个标签撕掉，这本书依然完好无损地躺在那里，因为还有个《大一教材》的标签吊着它的命。</li>
+<li><strong>软链接</strong>：相当于你在另一张独立的便利贴上写了一句话：“<em>那本微积分教材在客厅第三个书架上</em>”。如果你把那本真正的书一把火烧了，这张便利贴依然在，但你顺着便利贴上的话去找书时，只能看到一堆空气（死链接）。</li>
+</ul>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[xv6进程调度]]></title>
+        <id>https://dss544.github.io/post/xv6-jin-cheng-diao-du/</id>
+        <link href="https://dss544.github.io/post/xv6-jin-cheng-diao-du/">
+        </link>
+        <updated>2026-06-15T03:45:20.000Z</updated>
+        <content type="html"><![CDATA[<p>如果是新进程，在调度器获取到锁并切换上下文的时候，切换的是forkret函数，这个函数第一句就是释放锁。<br>
+如果是老进程A，在yield函数里面获取到自身锁，然后swtch切换回schedule函数的swtch，此时第一句仍然是释放掉自身的锁。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Bootloader]]></title>
+        <id>https://dss544.github.io/post/bootloader/</id>
+        <link href="https://dss544.github.io/post/bootloader/">
+        </link>
+        <updated>2026-06-14T02:11:54.000Z</updated>
+        <content type="html"><![CDATA[<p>第一步：关闭全局中断 (非常关键)<br>
+第二步：反初始化所有开启的外设 (特别是 USB)<br>
+第三步：恢复时钟到默认状态<br>
+第四步：关闭并清理 SysTick (滴答定时器)<br>
+APP 刚一启动还没配好 VTOR，SysTick 中断就来了，直接跑飞<br>
+第五步：清除所有 NVIC 挂起的中断,手动设置主栈栈顶地址 MSP</p>
+<h2 id="一份标准的-bootloader-跳转代码模板">一份标准的 Bootloader 跳转代码模板</h2>
+<pre><code class="language-c">typedef void (*pFunction)(void);
+pFunction Jump_To_Application;
+uint32_t JumpAddress;
+
+#define APP_ADDRESS 0x08010000
+
+void Jump_To_App(void)
+{
+    // 1. 检查栈顶地址是否合法 (判断是否真的有 APP 存在)
+    if (((*(__IO uint32_t*)APP_ADDRESS) &amp; 0x2FFE0000) == 0x20000000)
+    {
+        // 2. 关全局中断
+        __disable_irq();
+        
+        // 3. 反初始化外设 (解决你 USB 卡死的问题)
+        // HAL_PCD_DeInit(&amp;hpcd_USB_FS); 
+        // 各种 HAL_UART_DeInit 等...
+        
+        // 4. 恢复系统时钟到默认态 (切回HSI，关PLL)
+        HAL_RCC_DeInit();
+        // 5. 关闭 SysTick
+        SysTick-&gt;CTRL = 0;
+        SysTick-&gt;LOAD = 0;
+        SysTick-&gt;VAL  = 0;
+        // 6. 清理 NVIC 中断状态
+        for (int i = 0; i &lt; 8; i++) {
+            NVIC-&gt;ICER[i]=0xFFFFFFFF; 
+            NVIC-&gt;ICPR[i]=0xFFFFFFFF; 
+        }
+        // 7. 获取 APP 的复位向量地址 (APP_ADDRESS + 4 存放的是 Reset_Handler 地址)
+        JumpAddress = *(__IO uint32_t*) (APP_ADDRESS + 4);
+        Jump_To_Application = (pFunction) JumpAddress;
+        // 8. 设置主栈指针 MSP
+        __set_MSP(*(__IO uint32_t*) APP_ADDRESS);
+        // 9. 真正执行跳转 (其实就是调用函数指针，修改了 PC 指针)
+        Jump_To_Application();
+    }
+}
+</code></pre>
+<p>进入app后<br>
+第一步：重定向中断向量表 (VTOR)<br>
+第二步：重新开启全局中断</p>
+<ol>
+<li>终极内功心法：官方应用笔记 (Application Notes, AN)<br>
+永远不要只看 Datasheet（数据手册）和 Reference Manual（参考手册）。芯片原厂（如 ST、NXP、TI）的资深架构师会专门写一类文档叫 Application Notes（应用笔记）。</li>
+</ol>
+<p>精髓所在： 比如针对你今天看到的 ADC 精度问题，ST 有一篇极其经典的实战文档 AN2834《How to get the best ADC accuracy in STM32 microcontrollers》。里面不仅讲了内部参考电压，还极其详尽地剖析了阻抗匹配、运放跟随、PCB 走线干扰以及如何用 DMA 防抖。</p>
+<p>获取路径： 去 ST 官网搜你的芯片型号，在 Documentation 栏目下专门筛选 Application Notes。这里面全是原厂老专家几十年的实战经验总结。</p>
+<ol start="2">
+<li>
+<p>原厂的官方示例源码库 (Projects &amp; Examples)<br>
+你以为 CubeMX 生成出来的代码就是标准答案吗？大错特错。<br>
+在 STM32 的 HAL 库安装目录下（例如 STM32Cube_FW_F4_V1.xx.x），有一个 Projects 文件夹。里面包含了针对官方开发板的各种极端和高级用法代码。比如复杂的 DMA 乒乓缓存、定时器高级联动、双 ADC 同步采样等，原厂都写了极其严谨的标准示范代码放在那里，只是 CubeMX 的图形界面点不出来而已。</p>
+</li>
+<li>
+<p>高质量的硬核社区与论坛<br>
+抛弃那些满是“求个源码”的入门级贴吧，去这些地方看一线工程师的实战讨论：</p>
+</li>
+</ol>
+<p>硬汉嵌入式 (Armfly) 论坛： 国内做 STM32、RTOS 底层架构和 DSP 算法极其硬核的社区。他们发布的“高级篇教程”里，全是你今天看到的这种工业级处理手法。</p>
+<p>EEVblog (英文社区)： 全球顶级的电子硬件工程师论坛。当你在底层遇到那种解释不通的玄学 BUG 时，用英文在这里搜，大概率能看到国外工程师极其深度的示波器抓轨分析和代码级 Workaround（规避方案）。</p>
+<p>RT-Thread 开发者社区： 里面有大量经验丰富的开发者讨论底层驱动的健壮性设计和设备驱动框架。</p>
+<ol start="4">
+<li>工业级/车规级的顶级开源项目<br>
+就像你这次通过看开源项目学到 ADC 校准一样，继续保持这个习惯：</li>
+</ol>
+<p>无人机飞控项目 (PX4, ArduPilot)： 这些项目对传感器数据融合、ADC 采样精度、系统实时性的要求极其变态。去翻看它们的底层驱动（HAL）代码，简直是教科书级别的严谨。</p>
+<p>优秀的开源协议栈： 除了你已经接触过的 CherryUSB，还可以多看看 lwIP、FatFS 的底层移植接口，看看各路大神是如何把复杂的硬件时序抽象成优雅的软件架构的。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[ xv6实验[3]-写时复制]]></title>
+        <id>https://dss544.github.io/post/xv6-shi-yan-3-xie-shi-fu-zhi/</id>
+        <link href="https://dss544.github.io/post/xv6-shi-yan-3-xie-shi-fu-zhi/">
+        </link>
+        <updated>2026-06-11T11:03:02.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="1-为什么需要cow">1、为什么需要COW？</h1>
+<p>在xv6原生的<code>fork()</code>系统调用中，内核会采用“无脑硬拷贝”的策略：遍历父进程的所有虚拟内存，分配同等数量的物理页，并使用<code>memmove</code>将数据逐字节拷贝给子进程。<br>
+这种设计存在两个致命缺陷：<br>
+<strong>1、极高的时空开销</strong>：对于占用内存较大的进程，完整的内存拷贝会导致极大的延迟，并瞬间消耗大量物理内存。<br>
+<strong>2、严重的资源浪费</strong>：在 Unix/Linux 生态中，fork() 之后紧接 exec()（加载新程序）是最常见的进程创建范式。原先费时费力拷贝过来的物理页数据，在 exec() 执行的瞬间就会被清空作废。</p>
+<p>为解决这一问题，程序员们引入了写时复制（Copy-on-Write, COW）机制：在 fork() 时只拷贝页表而不分配物理页帧；父子进程共享同一块物理内存，并将其页表项（PTE）标记为只读。只有当某一方尝试写入数据触发缺页异常时，内核才进行真正的内存分配与拷贝。</p>
+<h1 id="2-核心架构重构">2、核心架构重构</h1>
+<h2 id="21-改造-fork-与-uvmcopy共享与降权">2.1 改造 fork 与 uvmcopy：共享与降权</h2>
+<p><code>COW</code>机制的第一步是修改<code>fork</code>的底层复制逻辑。我们重写<code>uvmcopy</code>函数，使其不再调用<code>kalloc</code> 分配新内存，而是直接将子进程的虚拟地址映射到父进程当前的物理页上。<br>
+关键在于权限管理：我们需要剥夺父子进程的写权限（清除 PTE_W），并打上自定义的软件标记 PTE_COW，以便后续在异常处理时识别。同时，由于物理页被多个进程共享，必须增加其引用计数。</p>
+<pre><code class="language-c">int
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  for(i = 0; i &lt; sz; i += PGSIZE){
+    if((pte = walk(old, i, 0)) == 0)
+      panic(&quot;uvmcopy: pte should exist&quot;);
+    if((*pte &amp; PTE_V) == 0)
+      panic(&quot;uvmcopy: page not present&quot;);
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    // 只有拥有可写权限才赋予COW标志
+    if (flags &amp; PTE_W)
+    {
+      flags = (flags &amp; ~PTE_W) | PTE_COW;
+      *pte = PA2PTE(pa) | flags;
+    }
+    // 子进程页表映射父亲当前页映射的物理地址
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      goto err;
+    }
+    // 添加引用
+    kaddref((void *)pa);
+  }
+  sfence_vma();
+  return 0;
+ err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}
+</code></pre>
+<h2 id="22-物理页生命周期管理引用计数机制">2.2 物理页生命周期管理：引用计数机制</h2>
+<p>为了安全回收内存，必须引入引用计数体系。实际可用的物理内存是从<code>KERNBASE</code>到<code>PHYSTOP</code>（共计 128MB）。我们可以通过偏移量映射出一个静态数组 page_ref，记录每个物理页帧的被映射次数。</p>
+<pre><code class="language-c">#define PA2INDEX(pa) (((uint64)pa - KERNBASE) / PGSIZE)
+int page_ref[(PHYSTOP - KERNBASE) / PGSIZE];
+
+// 增加引用
+int kaddref(void *pa) {
+  int ref = 0;
+  acquire(&amp;ref_lock);
+  ref = ++page_ref[PA2INDEX(pa)];
+  release(&amp;ref_lock);
+  return ref;
+}
+
+// 减少引用
+int ksubref(void *pa) {
+  int ref = 0;
+  acquire(&amp;ref_lock);
+  if (page_ref[PA2INDEX(pa)] &gt; 0) {
+    ref = --page_ref[PA2INDEX(pa)];
+  }
+  release(&amp;ref_lock);
+  return ref;
+}
+</code></pre>
+<p>配套修改<code>kfree</code>函数，确立“递减-判断-回收”的逻辑：只有当引用计数降至 0 时，才允许使用垃圾数据填充并挂入空闲链表。。</p>
+<pre><code class="language-c">void kfree(void *pa) {
+  struct run *r;
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa &lt; end || (uint64)pa &gt;= PHYSTOP)
+    panic(&quot;kfree&quot;);
+  // 第一步：安全递减引用计数
+  int ref = ksubref(pa);
+  if (ref &gt; 0) {
+      return; // 仍有进程共享，直接返回
+  }
+  // 第二步：彻底回收并放回 freelist
+  memset(pa, 1, PGSIZE); 
+  r = (struct run*)pa;
+  acquire(&amp;kmem.lock);
+  r-&gt;next = kmem.freelist;
+  kmem.freelist = r;
+  release(&amp;kmem.lock);
+}
+</code></pre>
+<h1 id="3-缺页拦截与按需分配-demand-allocation">3. 缺页拦截与按需分配 (Demand Allocation)</h1>
+<h2 id="31-捕获-store-page-fault">3.1 捕获 Store Page Fault</h2>
+<p>当进程企图写入一个被标记为只读的 COW 页时，RISC-V 的 MMU 会触发写缺页异常（scause == 15）。在 kernel/trap.c 的 usertrap 函数中，我们需要对此异常进行精准拦截与分发。<br>
+<strong>架构细节</strong>： 注意处理系统调用（scause == 8）时，我们将 PC 指针推到了下一条指令（epc += 4）。但在处理缺页异常时<strong>不需要这么做</strong>，因为分配完物理页并恢复写权限后，我们需要让 CPU 重新执行那条曾经失败的写入指令。</p>
+<pre><code class="language-c">void usertrap(void) {
+  // ... 前置鉴权与上下文保存 ...
+  if(r_scause() == 8){
+    // 处理系统调用
+    p-&gt;trapframe-&gt;epc += 4;
+    intr_on();
+    syscall();
+  }
+  // 捕获写缺页异常，且该页面必须是合法的 COW 页面
+  else if(r_scause() == 15 &amp;&amp; uvmcheckcowpage(p-&gt;pagetable, r_stval())) {
+      if (cow_alloc(p-&gt;pagetable, r_stval()) == -1) {
+        p-&gt;killed = 1; // 内存分配失败（OOM），终止进程
+      }
+  }
+  // ...
+}
+</code></pre>
+<p>这里封装了一个函数<code>uvmcheckcowpage</code>，确保触发异常的虚拟地址位于合法范围内，并且确实携带有 PTE_COW 标记。</p>
+<pre><code class="language-c">int uvmcheckcowpage(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  return va &lt; MAXVA &amp;&amp; ((pte = walk(pagetable, va, 0)) != 0)
+  &amp;&amp; (*pte &amp; PTE_V)
+  &amp;&amp; (*pte &amp; PTE_U)
+  &amp;&amp; (*pte &amp; PTE_COW);
+}
+</code></pre>
+<h2 id="32-极致的无拷贝优化cow_alloc-与-kcopy_n_deref">3.2 极致的无拷贝优化：cow_alloc 与 kcopy_n_deref</h2>
+<p>这是整个 COW 机制中最精妙的部分。当异常发生时，如果该物理页的引用计数已经降为 1（说明其他共享进程均已退出，当前进程处于独占状态），我们完全不需要申请新内存，直接在原物理页上恢复 PTE_W 权限即可。如果不是1，就老老实实从内存里面找到找到一个未被使用的物理页，将原物理页的内容拷贝过去。</p>
+<pre><code class="language-c">void * kcopy_n_deref(void *pa) {
+  // 终极优化：独占页面免拷贝
+  if (readref(pa) &lt;= 1) {
+    return pa; 
+  }
+  // 共享页面：分配新页并复制数据
+  uint64 newpa = (uint64)kalloc();
+  if (newpa == 0) return 0;
+  memmove((void*)newpa, (void*)pa, PGSIZE);
+  kfree(pa); // 释放原页面的引用
+  return (void *)newpa;
+}
+
+int cow_alloc(pagetable_t pagetable, uint64 va) {
+  pte_t *pte;
+  if ((pte = walk(pagetable, va, 0)) == 0) panic(&quot;cow_alloc: walk&quot;);
+    
+  uint64 pa = PTE2PA(*pte);
+  uint64 newpa = (uint64)kcopy_n_deref((void*)pa); 
+  if (newpa == 0) return -1; 
+  // 直接原地修改 PTE，极致高效，且无视 va 不对齐问题
+  uint64 flags = (PTE_FLAGS(*pte) | PTE_W) &amp; ~PTE_COW;
+  *pte = PA2PTE(newpa) | flags;
+  sfence_vma(); // 必须刷新 TLB
+  return 0;
+}
+</code></pre>
+<h2 id="33-补齐内核态盲区copyout-防护">3.3 补齐内核态盲区：copyout 防护</h2>
+<p>系统的缺页异常机制通常只能捕获用户态的非法写入。如果内核代码（如通过 read 系统调用读取文件时）使用 copyout 函数，它会通过软件寻址直接绕过 CPU 的内存保护机制，从而污染共享的物理页。<br>
+为此，必须在 copyout 中前置鉴权，强制触发 COW 内存分配：</p>
+<pre><code class="language-c">int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
+  uint64 n, va0, pa0;
+  while(len &gt; 0){
+    va0 = PGROUNDDOWN(dstva);
+    // 前置拦截：如果是 COW 页，提前触发复制与权限变更
+    if (uvmcheckcowpage(pagetable, va0)) {
+      if (cow_alloc(pagetable, va0) == -1) return -1;
+    }
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0) return -1;
+    n = PGSIZE - (dstva - va0);
+    if(n &gt; len) n = len;
+    memmove((void *)(pa0 + (dstva - va0)), src, n);
+    len -= n;
+    src += n;
+    dstva = va0 + PGSIZE;
+  }
+  return 0;
+}
+</code></pre>
+<p>从底层实现的角度来看，COW 机制不仅仅是一种节约内存的策略，更体现了现代工业级操作系统设计中“懒惰（Lazy）即高效”的核心哲学。这种将昂贵的资源分配操作尽可能推迟（甚至避免）的思想，正是构建高性能底层系统的基石。最后也是通过了实验，这个实验花了一天时间，继续努力吧，下一个实验是多线程。<br>
+<img src="https://dss544.github.io/post-images/1781178857278.png" alt="" loading="lazy"></p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[xv6实验[2]-页表Superpages内核实现]]></title>
+        <id>https://dss544.github.io/post/xv6-shi-yan-2-ye-biao/</id>
+        <link href="https://dss544.github.io/post/xv6-shi-yan-2-ye-biao/">
+        </link>
+        <updated>2026-06-06T12:10:47.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="1-实验背景与题目要求">1. 实验背景与题目要求</h1>
+<p>在标准的 RISC-V Sv39 架构下，xv6 内核采用三级页表管理，默认的内存分配粒度是 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4</mn><mtext>KB</mtext></mrow><annotation encoding="application/x-tex">4\text{KB}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">4</span><span class="mord text"><span class="mord">KB</span></span></span></span></span>（<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4096</mn><mtext> 字节</mtext></mrow><annotation encoding="application/x-tex">4096\text{ 字节}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">4</span><span class="mord">0</span><span class="mord">9</span><span class="mord">6</span><span class="mord text"><span class="mord"> </span><span class="mord cjk_fallback">字节</span></span></span></span></span>）。<br>
+<img src="https://dss544.github.io/post-images/1780983238120.png" alt="" loading="lazy"><br>
+本次实验的级核心要求是：改造内核的内存管理链路，使其支持 2MB 的大页面（Superpages）分配。具体场景为：当用户程序调用 sbrk(n) 动态申请内存，且申请大小达到 2MB 或更多时，如果当前的堆顶虚拟地址刚好满足 2MB 对齐，内核应当直接分配一整块连续的 2MB 物理大页并完成二级页表映射，而不是繁琐地去调用 512 次 kalloc 分配 4KB 的小页。</p>
+<h1 id="2-核心机理为什么大页偏偏是-2mb">2. 核心机理：为什么大页偏偏是 2MB？</h1>
+<p>在着手写代码前，我首先理清了 RISC-V 硬件寻址的数学逻辑。为什么大页的尺寸硬性规定必须是 2MB，而不是 1MB 或 16MB？秘密就隐藏在 Sv39 的三级页表（L2、L1、L0）索引结构中。每一级页表包含 512 个页表项（PTE），每个底层叶子节点管理 4KB 空间。因此，当我们遍历到中间页表（二级页表，即 L1 级）的某一个槽位时，它底下的那张 L0 页表一旦完全展开，其管辖的虚拟地址空间天然就是：</p>
+<p class='katex-block'><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>512</mn><mo>×</mo><mn>4096</mn><mtext> Bytes</mtext><mo>=</mo><mn>2</mn><mo separator="true">,</mo><mn>097</mn><mo separator="true">,</mo><mn>152</mn><mtext> Bytes</mtext><mo>=</mo><mn>2</mn><mtext>MB</mtext></mrow><annotation encoding="application/x-tex">512 \times 4096 \text{ Bytes} = 2,097,152 \text{ Bytes} = 2\text{MB}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">5</span><span class="mord">1</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">0</span><span class="mord">9</span><span class="mord">6</span><span class="mord text"><span class="mord"> Bytes</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord">2</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">0</span><span class="mord">9</span><span class="mord">7</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">1</span><span class="mord">5</span><span class="mord">2</span><span class="mord text"><span class="mord"> Bytes</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord text"><span class="mord">MB</span></span></span></span></span></span></p>
+<p>RISC-V 硬件设计者在底层留了一个“走捷径”的后门：原本 MMU 寻址需要无脑向下钻完三级（L2 -&gt; L1 -&gt; L0）。但如果在 L1 级页表项上直接设置了读、写或执行权限（即判断为 PTE_LEAF），MMU 硬件就会立刻触发刹车机制，停止下钻。它会直接认定：当前项指向的是一整块连续且 2MB 对齐的超级页面。在工业界（如 Linux 的透明大页 THP 机制），这种设计能将 512 个 TLB 缓存表项压缩为 1 个，大幅降低大内存消耗型应用的 TLB Miss 率，具有极高的工程价值。</p>
+<h1 id="3-代码实操">3. 代码实操</h1>
+<h2 id="物理内存布局的静态分区-static-memory-partitioning">物理内存布局的静态分区 (Static Memory Partitioning)</h2>
+<p>原生内核在启动执行 kinit() 时，默认将从内核代码段结束（end）至物理内存上限（PHYSTOP）之间的所有可用空间，全部按 4KB 粒度初始化至单一的空闲链表中。<br>
+为了满足大页分配的连续性要求，我在此处引入了静态内存分区设计。在系统初始化早期，强行将物理内存的高地址区域（即 PHYSTOP 向下偏移 16MB 的空间）划分为独立的大页专属内存池，而剩余的低地址区域继续沿用原生 4KB 分配逻辑。这种设计既保证了大页内存的绝对物理连续性，又最大程度减少了对原生小页管理逻辑的侵入。</p>
+<pre><code class="language-c">void
+kinit()
+{
+  initlock(&amp;kmem.lock, &quot;kmem&quot;);
+  superkinit();
+  uint64 super_start = PHYSTOP - (16 * 1024 * 1024);
+  freesuperrange((void *)super_start, (void *)PHYSTOP);
+  freerange(end, (void*)super_start);
+}
+</code></pre>
+<h2 id="大页内存的初始化与硬件对齐约束">大页内存的初始化与硬件对齐约束</h2>
+<p>在按块切分大页池时，必须严格遵守 RISC-V 架构的硬件规范：Superpage 的物理首地址必须按 2MB 边界严格对齐。 为此，我在 freesuperrange 初始化函数中，引入了 SUPERPGROUNDUP 宏进行地址的向上对齐校验，并以 SUPERPGSIZE（2MB）为步长，将这片空间切割后逐一挂载至大页空闲链表。</p>
+<pre><code class="language-c">void freesuperrange(void *pa_start, void *pa_end)
+{
+  char *p;
+  // 核心约束：强制物理地址以 2MB 向上对齐，满足 MMU 寻址规范
+  p = (char*)SUPERPGROUNDUP((uint64)pa_start);
+  
+  // 以 2MB 为步长遍历并释放至大页空闲链表
+  for (; p + SUPERPGSIZE &lt;= (char *)pa_end; p += SUPERPGSIZE)
+    superkfree(p);
+}
+</code></pre>
+<h2 id="内存申请和释放">内存申请和释放</h2>
+<p>拿到 16MB 的大页内存池后，第一步是实现底层的 alloc 和 free。申请内存的逻辑其实很简单，用了一把自旋锁保护，直接从链表头部摘一个节点下来就行</p>
+<pre><code class="language-c">void * superkalloc(void)
+{
+  struct run *r;
+  acquire(&amp;super_kmem.lock);
+  r = super_kmem.freelist;
+  if(r)
+    super_kmem.freelist = r-&gt;next;
+  release(&amp;super_kmem.lock);
+  if(r)
+    memset((char*)r, 5, SUPERPGSIZE); // 填充垃圾数据，防止旧数据残留
+  return (void *)r;
+}
+</code></pre>
+<p>作为底层内核代码，内存释放函数 superkfree 极易成为系统崩溃的重灾区。在实现该模块，参考原内核kfree代码，在将物理块重新插入 super_kmem.freelist 单链表之前，代码会执行三项严格的安全校验，并在挂载前主动填充特定标志位.</p>
+<pre><code class="language-c">void superkfree(void *pa)
+{
+  struct run *r;
+  // 内核安全边界断言：
+  // 1. 校验物理地址是否严格满足 2MB 对齐
+  // 2. 校验地址是否非法越界踩入内核代码段 (pa &lt; end)
+  // 3. 校验地址是否越出物理内存硬件上限 (pa &gt;= PHYSTOP)
+  if(((uint64)pa % SUPERPGSIZE) != 0 || (char *)pa &lt; end || (uint64)pa &gt;= PHYSTOP)
+    panic(&quot;superkfree: Invalid physical address&quot;);
+  // 内存污染机制：填充特定特征值 (0x01)
+  // 目的：在发生 Use-After-Free 非法访问时，促使程序产生确定性异常，便于 Debug
+  memset(pa, 1, SUPERPGSIZE);
+  r = (struct run*)pa;
+  // 临界区保护：获取自旋锁，采用头插法将物理块挂入大页空闲链表
+  acquire(&amp;super_kmem.lock);
+  r-&gt;next = super_kmem.freelist;
+  super_kmem.freelist = r;
+  release(&amp;super_kmem.lock);
+}
+</code></pre>
+<h2 id="在-uvmalloc-中截胡优先分配大页">在 uvmalloc 中“截胡”：优先分配大页</h2>
+<p>用户程序调用 malloc 时，底层最终会走到 sys_brk，并通过 uvmalloc 来实际分配物理内存。我在这里加上了“优先尝试大页”的拦截逻辑。<br>
+如果用户申请的空间满足 2MB 对齐，且大页池子里还有空闲就优先用大页；如果大页分配失败（比如池子空了），不要直接报错，而是老老实实退回到原本分配 4KB 小页的循环里去。</p>
+<pre><code class="language-c">uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
+{
+  char *mem;
+  uint64 a;
+  int sz; // 动态步长
+  if(newsz &lt; oldsz) return oldsz;
+  oldsz = PGROUNDUP(oldsz);
+  for(a = oldsz; a &lt; newsz; a += sz){
+    // 拦截条件：地址 2MB 对齐，且剩余所需空间至少有 2MB
+    if ((a % SUPERPGSIZE) == 0 &amp;&amp; (a + SUPERPGSIZE &lt;= newsz))
+    {
+      mem = superkalloc();
+      if (mem != 0)
+      {
+        memset(mem, 0, SUPERPGSIZE);
+        // 尝试映射大页，注意补齐 PTE_R 和 PTE_U (用户态访问权限)
+        if (mapsuperpages(pagetable, a, SUPERPGSIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0)
+        {
+          superkfree(mem); // 映射失败，及时回收物理大页
+        }
+        else
+        {
+          sz = SUPERPGSIZE; // 映射成功，步长直接跨越 2MB！
+          continue;
+        }
+      }
+    }
+    // 如果不满足大页条件，或者大页分配/映射失败，退回到普通的 4KB 分配逻辑
+    sz = PGSIZE;
+    mem = kalloc();
+    if(mem == 0){
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+#ifndef LAB_SYSCALL
+    memset(mem, 0, sz);
+#endif
+    if(mappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+      kfree(mem);
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+  }
+  return newsz;
+}
+</code></pre>
+<h2 id="直接在-l1-页表上映射">直接在 L1 页表上映射</h2>
+<p>既然分配了大页，就不能用原版的 mappages 去一层层映射到 L0 了。我单独写了一个 mapsuperpages 函数。  它的逻辑非常直接：先查 L2 目录，如果去 L1 的路没通，就分配一个 4KB 的页作为 L1 的目录。找到 L1 的槽位后，直接把 2MB 物理大页的地址和权限盖在这个槽位上。 根本不去管 L0 层。</p>
+<pre><code class="language-c">int mapsuperpages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  pte_t *pte;
+  // 严格的对齐校验
+  if((va % SUPERPGSIZE) != 0) panic(&quot;mapsuperpages: va not aligned&quot;);
+  if((size % SUPERPGSIZE) != 0) panic(&quot;mapsuperpages: size not aligned&quot;);
+  if(size == 0) panic(&quot;mapsuperpages: size&quot;);
+  // 1. 查找 L2 级目录
+  pte = &amp;pagetable[PX(2, va)];
+  pagetable_t l1;
+  
+  if (*pte &amp; PTE_V) // 如果 L1 目录已存在
+  {
+    l1 = (pagetable_t)(PTE2PA(*pte));
+  }
+  else { 
+    // 不存在则分配一个 4KB 的普通页作为 L1 目录
+    if((l1 = (pde_t *)kalloc()) == 0) return -1;
+    memset(l1, 0, PGSIZE);
+    *pte = PA2PTE(l1) | PTE_V;
+  }
+  // 2. 锁定 L1 级槽位
+  pte_t *pte1 = &amp;l1[PX(1, va)];
+  if(*pte1 &amp; PTE_V)
+    panic(&quot;mapsuperpages: remap&quot;);
+    
+  // 3. 关键一步：直接在此处写入 2MB 大页的物理地址和权限，硬件识别到后会自动将此作为叶子节点
+  *pte1 = PA2PTE(pa) | perm | PTE_V;
+  return 0;
+}
+
+</code></pre>
+<h2 id="解除映射与进程克隆">解除映射与进程克隆</h2>
+<p>原版的 uvmunmap 和 uvmcopy 都是按 4KB 步长死循环的。如果不做处理，它们遇到我刚才塞进去的 2MB 大页，会连续释放/拷贝 512 次相同的地址，系统当场 Panic。<br>
+解决办法是手动深入页表探测。在这两个函数的 for 循环里，先去 L1 层看一眼。如果 L1 的 PTE_V 有效，并且它带有读/写/执行权限（说明它是叶子节点，也就是大页），我就按 2MB 的逻辑处理，并且把循环步长 sz 动态修改为 2MB，跳过这段区域.</p>
+<pre><code class="language-c">void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
+{
+  uint64 a;
+  pte_t *pte;
+  int sz; // 引入动态步长
+
+  if((va % PGSIZE) != 0) panic(&quot;uvmunmap: not aligned&quot;);
+
+  for(a = va; a &lt; va + npages*PGSIZE; a += sz){
+    pte_t *pte2 = &amp;pagetable[PX(2, a)];
+    if (*pte2 &amp; PTE_V)
+    {
+      // 手动剥开页表：拿到 L1 目录，看看对应的槽位是不是叶子节点
+      pagetable_t l1 = (pagetable_t)PTE2PA(*pte2);
+      pte_t *pte_1 = &amp;l1[PX(1,a)];
+      
+      // 如果 L1 有效，并且具备终端权限 (R/W/X)，确认为 2MB 大页！
+      if ((*pte_1 &amp; PTE_V) &amp;&amp; ((*pte_1 &amp; (PTE_R|PTE_W|PTE_X)) != 0))
+      {
+        if (do_free) {
+          superkfree((void *)PTE2PA(*pte_1)); // 释放整块大页
+        }
+        *pte_1 = 0;
+        sz = SUPERPGSIZE; // 步长调成 2MB，跳过剩下的 511 次无用循环
+        continue;
+      }
+    }
+
+    // ... 下面是原版 4KB 小页的 walk 与 free 逻辑，步长 sz = PGSIZE
+    sz = PGSIZE;
+    if((pte = walk(pagetable, a, 0)) == 0)
+        panic(&quot;uvmunmap: walk&quot;);
+    if((*pte &amp; PTE_V) == 0) {
+        printf(&quot;va=%ld pte=%ld\n&quot;, a, *pte);
+        panic(&quot;uvmunmap: not mapped&quot;);
+    }
+    if(PTE_FLAGS(*pte) == PTE_V)
+        panic(&quot;uvmunmap: not a leaf&quot;);
+    if(do_free){
+        uint64 pa = PTE2PA(*pte);
+        kfree((void*)pa);
+    }
+    *pte = 0;
+  }
+}
+</code></pre>
+<p>最后是 fork() 时触发的 uvmcopy 修改：逻辑和上面极其类似。如果检测到父进程这是块大页，就给子进程也批发一块大页，用 memmove 一次性拷贝 2MB，然后映射好。</p>
+<pre><code class="language-c">int
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  char *mem;
+  int szinc;
+  for(i = 0; i &lt; sz; i += szinc){    
+    pte_t *pte2 = &amp;old[PX(2, i)];
+    if (*pte2 &amp; PTE_V)
+    {
+      pagetable_t p1 = (pagetable_t)PTE2PA(*pte2);
+      pte_t *pte1 =  &amp;p1[PX(1, i)];
+      if (*pte1 &amp; PTE_V &amp;&amp; ((*pte1 &amp; (PTE_R|PTE_W|PTE_X)) != 0))
+      {
+        pa = PTE2PA(*pte1);
+        flags = PTE_FLAGS(*pte1);
+        if((mem = (char *)superkalloc()) == 0)
+        {
+          goto err;
+        }
+        memmove(mem, (char *)pa, SUPERPGSIZE);
+        if(mapsuperpages(new, i, SUPERPGSIZE, (uint64)mem, flags) != 0)
+        {
+          superkfree(mem);
+          goto err;
+        }
+        szinc = SUPERPGSIZE;
+        continue;
+      }
+    }
+    szinc = PGSIZE;
+    if((pte = walk(old, i, 0)) == 0)
+      panic(&quot;uvmcopy: pte should exist&quot;);
+    if((*pte &amp; PTE_V) == 0)
+      panic(&quot;uvmcopy: page not present&quot;);
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if((mem = kalloc()) == 0)
+      goto err;
+    memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+      kfree(mem);
+      goto err;
+    }
+  }
+  return 0;
+ err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}
+</code></pre>
+<h1 id="总结">总结</h1>
+<p>走完这套流程——从物理内存的分区切分、分配时的动态拦截、底层页表的直接写死，再到进程解绑和克隆时的安全收尾——xv6 内核里这套大页（Superpages）的生命周期才算真正形成了闭环。<br>
+做完这个实验，我联想到了 Linux 内核庞大且精密的内存管理子系统。在 Linux 的世界里，kmalloc 的架构逻辑有着异曲同工之妙，但又远比这里复杂：大块的连续物理内存交由伙伴系统（Buddy System）大刀阔斧地统筹，而高频、细碎的小内存请求则交由 Slab/Slub 分配器去精雕细琢，外围还包裹着 TLB 刷新策略和各级 Cache 的极致优化。继续努力学习操作系统吧！</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[linux软件定时器-时间轮算法]]></title>
+        <id>https://dss544.github.io/post/linux-ruan-jian-ding-shi-qi-shi-jian-lun-suan-fa/</id>
+        <link href="https://dss544.github.io/post/linux-ruan-jian-ding-shi-qi-shi-jian-lun-suan-fa/">
+        </link>
+        <updated>2026-06-06T09:59:27.000Z</updated>
+        <content type="html"><![CDATA[<p>#一、 背景与痛点：为什么需要时间轮？<br>
+在操作系统中，管理定时器通常面临一个数据结构上的经典两难问题：<br>
+无序链表：插入极快 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span>，但每次时钟中断检查谁到期了，需要遍历整条链表，时间复杂度 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>N</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(N)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="mclose">)</span></span></span></span>。在成千上万个定时器的场景下，CPU 会被活活累死。<br>
+按时间排序的链表（如 FreeRTOS）：检查到期极快 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span>（只需看头部），但每次插入新定时器需要遍历寻找合适的位置 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>N</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(N)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="mclose">)</span></span></span></span>。<br>
+红黑树：红黑树插入和删除是<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>l</mi><mi>o</mi><mi>g</mi><mi>n</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(logn)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">o</span><span class="mord mathdefault" style="margin-right:0.03588em;">g</span><span class="mord mathdefault">n</span><span class="mclose">)</span></span></span></span>，到期检查取最小键值节点也是，综合性能远优于无序链表与有序单向链表；但仍存在短板：在百万级海量定时器的服务器场景下，单次插入<br>
+开销被海量调用持续放大。<br>
+为了在插入和检查触发上同时追求 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span> 的极致性能，Linux 内核引入了极其优雅的数据结构——多级时间轮（Timer Wheel）算法。</p>
+<p>#二、 核心思想：空间换时间与“多级齿轮”<br>
+Linux 的时间轮本质上是一个基于 32 位无符号整数（jiffies）的哈希表，通过位移（&gt;&gt;）和掩码（&amp;）操作来代替耗时的除法和取余。内核将定时器分为 5 个级别（对应 32 位二进制的不同段位）：TV1（第 1 级）：256 个槽位（Slot），负责低 8 位（0~255 的滴答）。TV2 到 TV5（第 2~5 级）：各 64 个槽位，分别负责接下来的各个 6 位。<br>
+###1. O(1) 的插入（对号入座）<br>
+无论要延时多久，内核只通过两次极其快速的位运算：近期任务（<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>&lt;</mo><mn>256</mn></mrow><annotation encoding="application/x-tex">&lt;256</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mrel">&lt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">5</span><span class="mord">6</span></span></span></span>）：expires &amp; 255，直接挂入 TV1 的对应槽位链表。远期任务：通过 (expires &gt;&gt; 8) &amp; 63，计算出高级表盘（如 TV2）的槽位并挂入。整个过程纯 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span>，毫无遍历操作。<br>
+##2. 2. O(1) 的执行与降级级联（Cascade）日常触发<br>
+系统的“内部秒针”（timer_jiffies）每走一步，就直接拔出 TV1 当前槽位的整条链表，一口气执行完毕。级联进位：当 TV1 转满一圈（走完 256 步，低 8 位归零）时，触发 Cascade（级联）。内核会去 TV2 拉开对应的抽屉，把里面的远期定时器全部摘下来，重新计算它们剩余的时间，像天女散花一样把它们降级重新散落插入到 TV1 的 256 个槽位中。</p>
+<p>#三、 核心源码解析（基于 Linux 4.1.15）<br>
+在 kernel/time/timer.c 中，整个算法由以下三个核心函数驱动：<br>
+##1. 插入引擎：<br>
+__internal_add_timer()所有 add_timer 或 mod_timer 最终都会调用此函数。它内部通过大量的 if...else if 和位移操作（&gt;&gt;），瞬间计算出定时器应该归属 TV1 还是 TVx，并使用标准的 list_add_tail 将其挂入双向链表。</p>
+<pre><code class="language-c">static void __internal_add_timer(struct tvec_base *base, struct timer_list *timer)
+{
+    unsigned long expires = timer-&gt;expires;
+    // 1. 算出相对当前内部秒针的差值（还有多久到期）
+    unsigned long idx = expires - base-&gt;timer_jiffies;
+    struct list_head *vec;
+
+    // 2. 根据差值范围，决定放入哪一级的表盘
+    if (idx &lt; TVR_SIZE) { // 近期任务 (差值 &lt; 256)
+        int i = expires &amp; TVR_MASK; // 等价于 expires % 256
+        vec = base-&gt;tv1.vec + i;    // 定位 TV1 槽位
+    } else if (idx &lt; 1 &lt;&lt; (TVR_BITS + TVN_BITS)) { // 稍远任务
+        int i = (expires &gt;&gt; TVR_BITS) &amp; TVN_MASK;  // 抹掉低8位后，等价于 % 64
+        vec = base-&gt;tv2.vec + i;                   // 定位 TV2 槽位
+    } else if (idx &lt; 1 &lt;&lt; (TVR_BITS + 2 * TVN_BITS)) {
+        int i = (expires &gt;&gt; (TVR_BITS + TVN_BITS)) &amp; TVN_MASK;
+        vec = base-&gt;tv3.vec + i;
+    } else if (idx &lt; 1 &lt;&lt; (TVR_BITS + 3 * TVN_BITS)) {
+        int i = (expires &gt;&gt; (TVR_BITS + 2 * TVN_BITS)) &amp; TVN_MASK;
+        vec = base-&gt;tv4.vec + i;
+    } else if ((signed long) idx &lt; 0) { // 边界保护：超时或已被处理
+        vec = base-&gt;tv1.vec + (base-&gt;timer_jiffies &amp; TVR_MASK);
+    } else { // 极遥远的未来任务，放入最高级 TV5
+        int i;
+        if (idx &gt; MAX_TVAL) {
+            idx = MAX_TVAL;
+            expires = idx + base-&gt;timer_jiffies;
+        }
+        i = (expires &gt;&gt; (TVR_BITS + 3 * TVN_BITS)) &amp; TVN_MASK;
+        vec = base-&gt;tv5.vec + i;
+    }
+    // 3. O(1) 尾插法挂入目标槽位的双向链表
+    list_add_tail(&amp;timer-&gt;entry, vec);
+}
+</code></pre>
+<p>##2. 执行心脏：<br>
+__run_timers()在 TIMER_SOFTIRQ 软中断中被调用。它包含一个 while (time_after_eq(jiffies, base-&gt;timer_jiffies)) 的追赶循环。只要内部秒针落后于真实时间，就会不断推进。极致的无锁回调：在拔出当前槽位的链表后，内核会果断释放自旋锁（spin_unlock_irq），让用户的定时器回调函数自由执行，防止阻塞其他 CPU 核心操作时间轮，执行完毕后再把锁拿回来。</p>
+<pre><code class="language-c">static inline void __run_timers(struct tvec_base *base)
+{
+    struct timer_list *timer;
+    spin_lock_irq(&amp;base-&gt;lock); // 上锁，保护时间轮不被并发修改
+    if (catchup_timer_jiffies(base)) {
+        spin_unlock_irq(&amp;base-&gt;lock);
+        return;
+    }
+    // 1. 追赶循环：如果内部秒针落后于真实时间 jiffies，就一步步往前走
+    while (time_after_eq(jiffies, base-&gt;timer_jiffies)) {
+        struct list_head work_list;
+        struct list_head *head = &amp;work_list;
+        // 获取 TV1 当前的槽位号 (0~255)
+        int index = base-&gt;timer_jiffies &amp; TVR_MASK;
+
+        // 2. 级联触发逻辑 (核心齿轮运转)
+        // 如果 index == 0，说明 TV1 转满了一圈，利用 &amp;&amp; 的短路特性依次尝试降级高级表盘
+        if (!index &amp;&amp;
+            (!cascade(base, &amp;base-&gt;tv2, INDEX(0))) &amp;&amp;
+                (!cascade(base, &amp;base-&gt;tv3, INDEX(1))) &amp;&amp;
+                    !cascade(base, &amp;base-&gt;tv4, INDEX(2)))
+            cascade(base, &amp;base-&gt;tv5, INDEX(3));
+            
+        ++base-&gt;timer_jiffies; // 秒针向前走一格
+        // 3. 把 TV1 当前槽位的链表“连根拔起”放到 work_list 中，并清空原槽位
+        list_replace_init(base-&gt;tv1.vec + index, head);
+        // 4. 挨个引爆定时器
+        while (!list_empty(head)) {
+            void (*fn)(unsigned long);
+            unsigned long data;
+            bool irqsafe;
+            timer = list_first_entry(head, struct timer_list, entry);
+            fn = timer-&gt;function;
+            data = timer-&gt;data;
+            irqsafe = tbase_get_irqsafe(timer-&gt;base);
+            timer_stats_account_timer(timer);
+            base-&gt;running_timer = timer;
+            detach_expired_timer(timer, base); // 从链表中彻底脱离
+            // 5. 危险动作警告：剥离锁执行！
+            // 执行用户的回调函数时，必须放开自旋锁，防止阻塞其他 CPU 操作时间轮
+            if (irqsafe) {
+                spin_unlock(&amp;base-&gt;lock);
+                call_timer_fn(timer, fn, data); // 自由执行回调
+                spin_lock(&amp;base-&gt;lock);         // 拿回锁，处理下一个
+            } else {
+                spin_unlock_irq(&amp;base-&gt;lock);
+                call_timer_fn(timer, fn, data); 
+                spin_lock_irq(&amp;base-&gt;lock);
+            }
+        }
+    }
+    base-&gt;running_timer = NULL;
+    spin_unlock_irq(&amp;base-&gt;lock);
+}
+</code></pre>
+<p>##3. 搬家公司：<br>
+cascade()当 __run_timers 发现当前秒针的低 8 位全是 0（index == 0）时调用。它负责把高级表盘（如 TV2）对应槽位里的链表连根拔起，并遍历其中的每一个旧定时器，重新调用 internal_add_timer() 将它们降级塞回低级表盘。由于 C 语言的短路求值特性，级联操作代码写得极其精炼。</p>
+<pre><code class="language-c">static int cascade(struct tvec_base *base, struct tvec *tv, int index)
+{
+    /* 把高级表盘 tv 中 index 槽位的所有定时器，降级搬运到下一级 */
+    struct timer_list *timer, *tmp;
+    struct list_head tv_list;
+    // 1. 将目标槽位里的所有定时器连根拔起，存入临时链表 tv_list
+    list_replace_init(tv-&gt;vec + index, &amp;tv_list);
+    // 2. 遍历刚刚拔出来的所有旧定时器
+    list_for_each_entry_safe(timer, tmp, &amp;tv_list, entry) {
+        BUG_ON(tbase_get_base(timer-&gt;base) != base);
+        // 3. 核心：由于此时 base-&gt;timer_jiffies 已经变大，
+        // 重新调用添加函数时，它们会被自动“降级”分配到更低级的表盘（如 TV1）
+        __internal_add_timer(base, timer);
+    }
+    return index; // 返回槽位号，决定是否触发更上一级的联动
+}
+</code></pre>
+]]></content>
+    </entry>
+</feed>

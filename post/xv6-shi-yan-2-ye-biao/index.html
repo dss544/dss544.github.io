@@ -1,0 +1,443 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xv6实验[2]-页表Superpages内核实现 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="xv6实验[2]-页表Superpages内核实现 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="1. 实验背景与题目要求
+在标准的 RISC-V Sv39 架构下，xv6 内核采用三级页表管理，默认的内存分配粒度是 4KB4\text{KB}4KB（4096 字节4096\text{ 字节}4096 字节）。
+
+本次实验的级核心要求是..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              xv6实验[2]-页表Superpages内核实现
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-06
+              </span>
+              <span>
+                12 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="1-实验背景与题目要求">1. 实验背景与题目要求</h1>
+<p>在标准的 RISC-V Sv39 架构下，xv6 内核采用三级页表管理，默认的内存分配粒度是 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4</mn><mtext>KB</mtext></mrow><annotation encoding="application/x-tex">4\text{KB}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">4</span><span class="mord text"><span class="mord">KB</span></span></span></span></span>（<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4096</mn><mtext> 字节</mtext></mrow><annotation encoding="application/x-tex">4096\text{ 字节}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">4</span><span class="mord">0</span><span class="mord">9</span><span class="mord">6</span><span class="mord text"><span class="mord"> </span><span class="mord cjk_fallback">字节</span></span></span></span></span>）。<br>
+<img src="https://dss544.github.io/post-images/1780983238120.png" alt="" loading="lazy"><br>
+本次实验的级核心要求是：改造内核的内存管理链路，使其支持 2MB 的大页面（Superpages）分配。具体场景为：当用户程序调用 sbrk(n) 动态申请内存，且申请大小达到 2MB 或更多时，如果当前的堆顶虚拟地址刚好满足 2MB 对齐，内核应当直接分配一整块连续的 2MB 物理大页并完成二级页表映射，而不是繁琐地去调用 512 次 kalloc 分配 4KB 的小页。</p>
+<h1 id="2-核心机理为什么大页偏偏是-2mb">2. 核心机理：为什么大页偏偏是 2MB？</h1>
+<p>在着手写代码前，我首先理清了 RISC-V 硬件寻址的数学逻辑。为什么大页的尺寸硬性规定必须是 2MB，而不是 1MB 或 16MB？秘密就隐藏在 Sv39 的三级页表（L2、L1、L0）索引结构中。每一级页表包含 512 个页表项（PTE），每个底层叶子节点管理 4KB 空间。因此，当我们遍历到中间页表（二级页表，即 L1 级）的某一个槽位时，它底下的那张 L0 页表一旦完全展开，其管辖的虚拟地址空间天然就是：</p>
+<p class='katex-block'><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>512</mn><mo>×</mo><mn>4096</mn><mtext> Bytes</mtext><mo>=</mo><mn>2</mn><mo separator="true">,</mo><mn>097</mn><mo separator="true">,</mo><mn>152</mn><mtext> Bytes</mtext><mo>=</mo><mn>2</mn><mtext>MB</mtext></mrow><annotation encoding="application/x-tex">512 \times 4096 \text{ Bytes} = 2,097,152 \text{ Bytes} = 2\text{MB}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">5</span><span class="mord">1</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">0</span><span class="mord">9</span><span class="mord">6</span><span class="mord text"><span class="mord"> Bytes</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord">2</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">0</span><span class="mord">9</span><span class="mord">7</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">1</span><span class="mord">5</span><span class="mord">2</span><span class="mord text"><span class="mord"> Bytes</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord text"><span class="mord">MB</span></span></span></span></span></span></p>
+<p>RISC-V 硬件设计者在底层留了一个“走捷径”的后门：原本 MMU 寻址需要无脑向下钻完三级（L2 -&gt; L1 -&gt; L0）。但如果在 L1 级页表项上直接设置了读、写或执行权限（即判断为 PTE_LEAF），MMU 硬件就会立刻触发刹车机制，停止下钻。它会直接认定：当前项指向的是一整块连续且 2MB 对齐的超级页面。在工业界（如 Linux 的透明大页 THP 机制），这种设计能将 512 个 TLB 缓存表项压缩为 1 个，大幅降低大内存消耗型应用的 TLB Miss 率，具有极高的工程价值。</p>
+<h1 id="3-代码实操">3. 代码实操</h1>
+<h2 id="物理内存布局的静态分区-static-memory-partitioning">物理内存布局的静态分区 (Static Memory Partitioning)</h2>
+<p>原生内核在启动执行 kinit() 时，默认将从内核代码段结束（end）至物理内存上限（PHYSTOP）之间的所有可用空间，全部按 4KB 粒度初始化至单一的空闲链表中。<br>
+为了满足大页分配的连续性要求，我在此处引入了静态内存分区设计。在系统初始化早期，强行将物理内存的高地址区域（即 PHYSTOP 向下偏移 16MB 的空间）划分为独立的大页专属内存池，而剩余的低地址区域继续沿用原生 4KB 分配逻辑。这种设计既保证了大页内存的绝对物理连续性，又最大程度减少了对原生小页管理逻辑的侵入。</p>
+<pre><code class="language-c">void
+kinit()
+{
+  initlock(&amp;kmem.lock, &quot;kmem&quot;);
+  superkinit();
+  uint64 super_start = PHYSTOP - (16 * 1024 * 1024);
+  freesuperrange((void *)super_start, (void *)PHYSTOP);
+  freerange(end, (void*)super_start);
+}
+</code></pre>
+<h2 id="大页内存的初始化与硬件对齐约束">大页内存的初始化与硬件对齐约束</h2>
+<p>在按块切分大页池时，必须严格遵守 RISC-V 架构的硬件规范：Superpage 的物理首地址必须按 2MB 边界严格对齐。 为此，我在 freesuperrange 初始化函数中，引入了 SUPERPGROUNDUP 宏进行地址的向上对齐校验，并以 SUPERPGSIZE（2MB）为步长，将这片空间切割后逐一挂载至大页空闲链表。</p>
+<pre><code class="language-c">void freesuperrange(void *pa_start, void *pa_end)
+{
+  char *p;
+  // 核心约束：强制物理地址以 2MB 向上对齐，满足 MMU 寻址规范
+  p = (char*)SUPERPGROUNDUP((uint64)pa_start);
+  
+  // 以 2MB 为步长遍历并释放至大页空闲链表
+  for (; p + SUPERPGSIZE &lt;= (char *)pa_end; p += SUPERPGSIZE)
+    superkfree(p);
+}
+</code></pre>
+<h2 id="内存申请和释放">内存申请和释放</h2>
+<p>拿到 16MB 的大页内存池后，第一步是实现底层的 alloc 和 free。申请内存的逻辑其实很简单，用了一把自旋锁保护，直接从链表头部摘一个节点下来就行</p>
+<pre><code class="language-c">void * superkalloc(void)
+{
+  struct run *r;
+  acquire(&amp;super_kmem.lock);
+  r = super_kmem.freelist;
+  if(r)
+    super_kmem.freelist = r-&gt;next;
+  release(&amp;super_kmem.lock);
+  if(r)
+    memset((char*)r, 5, SUPERPGSIZE); // 填充垃圾数据，防止旧数据残留
+  return (void *)r;
+}
+</code></pre>
+<p>作为底层内核代码，内存释放函数 superkfree 极易成为系统崩溃的重灾区。在实现该模块，参考原内核kfree代码，在将物理块重新插入 super_kmem.freelist 单链表之前，代码会执行三项严格的安全校验，并在挂载前主动填充特定标志位.</p>
+<pre><code class="language-c">void superkfree(void *pa)
+{
+  struct run *r;
+  // 内核安全边界断言：
+  // 1. 校验物理地址是否严格满足 2MB 对齐
+  // 2. 校验地址是否非法越界踩入内核代码段 (pa &lt; end)
+  // 3. 校验地址是否越出物理内存硬件上限 (pa &gt;= PHYSTOP)
+  if(((uint64)pa % SUPERPGSIZE) != 0 || (char *)pa &lt; end || (uint64)pa &gt;= PHYSTOP)
+    panic(&quot;superkfree: Invalid physical address&quot;);
+  // 内存污染机制：填充特定特征值 (0x01)
+  // 目的：在发生 Use-After-Free 非法访问时，促使程序产生确定性异常，便于 Debug
+  memset(pa, 1, SUPERPGSIZE);
+  r = (struct run*)pa;
+  // 临界区保护：获取自旋锁，采用头插法将物理块挂入大页空闲链表
+  acquire(&amp;super_kmem.lock);
+  r-&gt;next = super_kmem.freelist;
+  super_kmem.freelist = r;
+  release(&amp;super_kmem.lock);
+}
+</code></pre>
+<h2 id="在-uvmalloc-中截胡优先分配大页">在 uvmalloc 中“截胡”：优先分配大页</h2>
+<p>用户程序调用 malloc 时，底层最终会走到 sys_brk，并通过 uvmalloc 来实际分配物理内存。我在这里加上了“优先尝试大页”的拦截逻辑。<br>
+如果用户申请的空间满足 2MB 对齐，且大页池子里还有空闲就优先用大页；如果大页分配失败（比如池子空了），不要直接报错，而是老老实实退回到原本分配 4KB 小页的循环里去。</p>
+<pre><code class="language-c">uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
+{
+  char *mem;
+  uint64 a;
+  int sz; // 动态步长
+  if(newsz &lt; oldsz) return oldsz;
+  oldsz = PGROUNDUP(oldsz);
+  for(a = oldsz; a &lt; newsz; a += sz){
+    // 拦截条件：地址 2MB 对齐，且剩余所需空间至少有 2MB
+    if ((a % SUPERPGSIZE) == 0 &amp;&amp; (a + SUPERPGSIZE &lt;= newsz))
+    {
+      mem = superkalloc();
+      if (mem != 0)
+      {
+        memset(mem, 0, SUPERPGSIZE);
+        // 尝试映射大页，注意补齐 PTE_R 和 PTE_U (用户态访问权限)
+        if (mapsuperpages(pagetable, a, SUPERPGSIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0)
+        {
+          superkfree(mem); // 映射失败，及时回收物理大页
+        }
+        else
+        {
+          sz = SUPERPGSIZE; // 映射成功，步长直接跨越 2MB！
+          continue;
+        }
+      }
+    }
+    // 如果不满足大页条件，或者大页分配/映射失败，退回到普通的 4KB 分配逻辑
+    sz = PGSIZE;
+    mem = kalloc();
+    if(mem == 0){
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+#ifndef LAB_SYSCALL
+    memset(mem, 0, sz);
+#endif
+    if(mappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+      kfree(mem);
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+  }
+  return newsz;
+}
+</code></pre>
+<h2 id="直接在-l1-页表上映射">直接在 L1 页表上映射</h2>
+<p>既然分配了大页，就不能用原版的 mappages 去一层层映射到 L0 了。我单独写了一个 mapsuperpages 函数。  它的逻辑非常直接：先查 L2 目录，如果去 L1 的路没通，就分配一个 4KB 的页作为 L1 的目录。找到 L1 的槽位后，直接把 2MB 物理大页的地址和权限盖在这个槽位上。 根本不去管 L0 层。</p>
+<pre><code class="language-c">int mapsuperpages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  pte_t *pte;
+  // 严格的对齐校验
+  if((va % SUPERPGSIZE) != 0) panic(&quot;mapsuperpages: va not aligned&quot;);
+  if((size % SUPERPGSIZE) != 0) panic(&quot;mapsuperpages: size not aligned&quot;);
+  if(size == 0) panic(&quot;mapsuperpages: size&quot;);
+  // 1. 查找 L2 级目录
+  pte = &amp;pagetable[PX(2, va)];
+  pagetable_t l1;
+  
+  if (*pte &amp; PTE_V) // 如果 L1 目录已存在
+  {
+    l1 = (pagetable_t)(PTE2PA(*pte));
+  }
+  else { 
+    // 不存在则分配一个 4KB 的普通页作为 L1 目录
+    if((l1 = (pde_t *)kalloc()) == 0) return -1;
+    memset(l1, 0, PGSIZE);
+    *pte = PA2PTE(l1) | PTE_V;
+  }
+  // 2. 锁定 L1 级槽位
+  pte_t *pte1 = &amp;l1[PX(1, va)];
+  if(*pte1 &amp; PTE_V)
+    panic(&quot;mapsuperpages: remap&quot;);
+    
+  // 3. 关键一步：直接在此处写入 2MB 大页的物理地址和权限，硬件识别到后会自动将此作为叶子节点
+  *pte1 = PA2PTE(pa) | perm | PTE_V;
+  return 0;
+}
+
+</code></pre>
+<h2 id="解除映射与进程克隆">解除映射与进程克隆</h2>
+<p>原版的 uvmunmap 和 uvmcopy 都是按 4KB 步长死循环的。如果不做处理，它们遇到我刚才塞进去的 2MB 大页，会连续释放/拷贝 512 次相同的地址，系统当场 Panic。<br>
+解决办法是手动深入页表探测。在这两个函数的 for 循环里，先去 L1 层看一眼。如果 L1 的 PTE_V 有效，并且它带有读/写/执行权限（说明它是叶子节点，也就是大页），我就按 2MB 的逻辑处理，并且把循环步长 sz 动态修改为 2MB，跳过这段区域.</p>
+<pre><code class="language-c">void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
+{
+  uint64 a;
+  pte_t *pte;
+  int sz; // 引入动态步长
+
+  if((va % PGSIZE) != 0) panic(&quot;uvmunmap: not aligned&quot;);
+
+  for(a = va; a &lt; va + npages*PGSIZE; a += sz){
+    pte_t *pte2 = &amp;pagetable[PX(2, a)];
+    if (*pte2 &amp; PTE_V)
+    {
+      // 手动剥开页表：拿到 L1 目录，看看对应的槽位是不是叶子节点
+      pagetable_t l1 = (pagetable_t)PTE2PA(*pte2);
+      pte_t *pte_1 = &amp;l1[PX(1,a)];
+      
+      // 如果 L1 有效，并且具备终端权限 (R/W/X)，确认为 2MB 大页！
+      if ((*pte_1 &amp; PTE_V) &amp;&amp; ((*pte_1 &amp; (PTE_R|PTE_W|PTE_X)) != 0))
+      {
+        if (do_free) {
+          superkfree((void *)PTE2PA(*pte_1)); // 释放整块大页
+        }
+        *pte_1 = 0;
+        sz = SUPERPGSIZE; // 步长调成 2MB，跳过剩下的 511 次无用循环
+        continue;
+      }
+    }
+
+    // ... 下面是原版 4KB 小页的 walk 与 free 逻辑，步长 sz = PGSIZE
+    sz = PGSIZE;
+    if((pte = walk(pagetable, a, 0)) == 0)
+        panic(&quot;uvmunmap: walk&quot;);
+    if((*pte &amp; PTE_V) == 0) {
+        printf(&quot;va=%ld pte=%ld\n&quot;, a, *pte);
+        panic(&quot;uvmunmap: not mapped&quot;);
+    }
+    if(PTE_FLAGS(*pte) == PTE_V)
+        panic(&quot;uvmunmap: not a leaf&quot;);
+    if(do_free){
+        uint64 pa = PTE2PA(*pte);
+        kfree((void*)pa);
+    }
+    *pte = 0;
+  }
+}
+</code></pre>
+<p>最后是 fork() 时触发的 uvmcopy 修改：逻辑和上面极其类似。如果检测到父进程这是块大页，就给子进程也批发一块大页，用 memmove 一次性拷贝 2MB，然后映射好。</p>
+<pre><code class="language-c">int
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  char *mem;
+  int szinc;
+  for(i = 0; i &lt; sz; i += szinc){    
+    pte_t *pte2 = &amp;old[PX(2, i)];
+    if (*pte2 &amp; PTE_V)
+    {
+      pagetable_t p1 = (pagetable_t)PTE2PA(*pte2);
+      pte_t *pte1 =  &amp;p1[PX(1, i)];
+      if (*pte1 &amp; PTE_V &amp;&amp; ((*pte1 &amp; (PTE_R|PTE_W|PTE_X)) != 0))
+      {
+        pa = PTE2PA(*pte1);
+        flags = PTE_FLAGS(*pte1);
+        if((mem = (char *)superkalloc()) == 0)
+        {
+          goto err;
+        }
+        memmove(mem, (char *)pa, SUPERPGSIZE);
+        if(mapsuperpages(new, i, SUPERPGSIZE, (uint64)mem, flags) != 0)
+        {
+          superkfree(mem);
+          goto err;
+        }
+        szinc = SUPERPGSIZE;
+        continue;
+      }
+    }
+    szinc = PGSIZE;
+    if((pte = walk(old, i, 0)) == 0)
+      panic(&quot;uvmcopy: pte should exist&quot;);
+    if((*pte &amp; PTE_V) == 0)
+      panic(&quot;uvmcopy: page not present&quot;);
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if((mem = kalloc()) == 0)
+      goto err;
+    memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+      kfree(mem);
+      goto err;
+    }
+  }
+  return 0;
+ err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}
+</code></pre>
+<h1 id="总结">总结</h1>
+<p>走完这套流程——从物理内存的分区切分、分配时的动态拦截、底层页表的直接写死，再到进程解绑和克隆时的安全收尾——xv6 内核里这套大页（Superpages）的生命周期才算真正形成了闭环。<br>
+做完这个实验，我联想到了 Linux 内核庞大且精密的内存管理子系统。在 Linux 的世界里，kmalloc 的架构逻辑有着异曲同工之妙，但又远比这里复杂：大块的连续物理内存交由伙伴系统（Buddy System）大刀阔斧地统筹，而高频、细碎的小内存请求则交由 Slab/Slub 分配器去精雕细琢，外围还包裹着 TLB 刷新策略和各级 Cache 的极致优化。继续努力学习操作系统吧！</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#1-%E5%AE%9E%E9%AA%8C%E8%83%8C%E6%99%AF%E4%B8%8E%E9%A2%98%E7%9B%AE%E8%A6%81%E6%B1%82">1. 实验背景与题目要求</a></li>
+<li><a href="#2-%E6%A0%B8%E5%BF%83%E6%9C%BA%E7%90%86%E4%B8%BA%E4%BB%80%E4%B9%88%E5%A4%A7%E9%A1%B5%E5%81%8F%E5%81%8F%E6%98%AF-2mb">2. 核心机理：为什么大页偏偏是 2MB？</a></li>
+<li><a href="#3-%E4%BB%A3%E7%A0%81%E5%AE%9E%E6%93%8D">3. 代码实操</a>
+<ul>
+<li><a href="#%E7%89%A9%E7%90%86%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80%E7%9A%84%E9%9D%99%E6%80%81%E5%88%86%E5%8C%BA-static-memory-partitioning">物理内存布局的静态分区 (Static Memory Partitioning)</a></li>
+<li><a href="#%E5%A4%A7%E9%A1%B5%E5%86%85%E5%AD%98%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96%E4%B8%8E%E7%A1%AC%E4%BB%B6%E5%AF%B9%E9%BD%90%E7%BA%A6%E6%9D%9F">大页内存的初始化与硬件对齐约束</a></li>
+<li><a href="#%E5%86%85%E5%AD%98%E7%94%B3%E8%AF%B7%E5%92%8C%E9%87%8A%E6%94%BE">内存申请和释放</a></li>
+<li><a href="#%E5%9C%A8-uvmalloc-%E4%B8%AD%E6%88%AA%E8%83%A1%E4%BC%98%E5%85%88%E5%88%86%E9%85%8D%E5%A4%A7%E9%A1%B5">在 uvmalloc 中“截胡”：优先分配大页</a></li>
+<li><a href="#%E7%9B%B4%E6%8E%A5%E5%9C%A8-l1-%E9%A1%B5%E8%A1%A8%E4%B8%8A%E6%98%A0%E5%B0%84">直接在 L1 页表上映射</a></li>
+<li><a href="#%E8%A7%A3%E9%99%A4%E6%98%A0%E5%B0%84%E4%B8%8E%E8%BF%9B%E7%A8%8B%E5%85%8B%E9%9A%86">解除映射与进程克隆</a></li>
+</ul>
+</li>
+<li><a href="#%E6%80%BB%E7%BB%93">总结</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/linux-ruan-jian-ding-shi-qi-shi-jian-lun-suan-fa/">
+              <h3 class="post-title">
+                linux软件定时器-时间轮算法
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,328 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xv6网络 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="xv6网络 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="
+ARP Request（询问谁有10.0.2.15）
+
+前14个字节:以太网头部
+ffff ffff ffff：目的 MAC →\rightarrow→ 全 1 广播，整个局域网都收听。
+5255 0a00 0202：源 MAC →\ri..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              xv6网络
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-22
+              </span>
+              <span>
+                14 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p><img src="https://dss544.github.io/post-images/1782094399620.png" alt="" loading="lazy"><br>
+ARP Request（询问谁有10.0.2.15）</p>
+<ol>
+<li>前14个字节:以太网头部<br>
+ffff ffff ffff：目的 MAC <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 全 1 广播，整个局域网都收听。<br>
+5255 0a00 0202：源 MAC <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 询问方（10.0.2.2）的物理地址。<br>
+0806：以太网类型 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 代表后面是 ARP 包。</li>
+<li>后 28 字节：进入 struct arp 结构体紧接着 0806 往后数：<br>
+0001 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> hrd（以太网）<br>
+0800 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> pro（IPv4 协议）<br>
+06   <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> hln（MAC长 6）<br>
+04   <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> pln（IP长 4）<br>
+0001 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> op（ARP_OP_REQUEST = 1，代表这是请求包）<br>
+5255 0a00 0202 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> sha（发起人的 MAC）<br>
+0a00 0202       <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> sip（发起人的 IP，十六进制转十进制就是 10.0.2.2）<br>
+0000 0000 0000 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> tha（重点！因为发起人不知道对方的 MAC 到底是多少，所以这里全填 0 占位）<br>
+0a00 020f       <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> tip（被询问的目标 IP，0x0f 换算成十进制是 15，即 10.0.2.15）</li>
+</ol>
+<p><img src="https://dss544.github.io/post-images/1782096469421.png" alt="" loading="lazy"><br>
+UDP Request（询问谁有10.0.2.15）<br>
+<em><strong>第一步：剥离前 14 字节（以太网头部）</strong></em><br>
+在进入红线之前，最开头的 14 个字节是永远不变的以太网外壳：ffff ffff ffff：目的 MAC 地址（广播）。<br>
+5254 0012 3456：源 MAC 地址（xv6 虚拟网卡的地址）。<br>
+0800：以太网类型 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 铁证如山，告诉内核后面装的是 IP 数据包。</p>
+<p><em><strong>第二步：硬核对齐红线内的 20 字节（struct ip）</strong></em><br>
+紧接着 0800 往后，就是红线划分的边界。我们把红线里的数据连续抄下来：<br>
+45 00 00 2f 00 00 00 00 64 11 3e ae 0a 00 02 0f 0a 00 02 02<br>
+（共 20 字节，每个数代表 1 字节）</p>
+<ol>
+<li>45 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_vhl (1字节)拆解：高 4 位是 4（代表 IPv4）；低 4 位是 5（代表首部长度是 5 个 32位字，即 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>5</mn><mo>×</mo><mn>4</mn><mo>=</mo><mn>20</mn></mrow><annotation encoding="application/x-tex">5 \times 4 = 20</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">5</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">0</span></span></span></span> 字节）。这完美证明了该 IP 报头没有任何可选选项，就是标准的 20 字节。</li>
+<li>00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_tos (1字节)服务类型，这里是默认值 0。</li>
+<li>00 2f <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_len (2字节，总长度)计算：十六进制的 0x002f 转换成十进制是 47。含义：代表从 45 开始，整个 IP 包（含 IP 头 + UDP 头 + 数据）总共长 47 字节。肉眼验证：你可以数数红线起点 45 一直到图片最后末尾的 21（也就是感叹号），刚好就是 47 个字节！</li>
+<li>00 00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_id (2字节)报文标识符，这里全为 0。</li>
+<li>00 00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_off (2字节)片偏移，全为 0，代表这个包很小，没有被砍成碎片。</li>
+<li>64 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_ttl (1字节，生存时间)十六进制的 0x64 转换成十进制是 100。表示这个包在互联网上最多能被路由器转发 100 次。</li>
+<li>11 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_p (1字节，协议) 【核心关键！】转换：十六进制的 0x11 转换成十进制就是 17！含义：对照上面的代码：#define IPPROTO_UDP 17。这告诉内核：“我这个 IP 包的里面，套着一个 UDP 协议包！”</li>
+<li>3e ae <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_sum (2字节)上一题我们刚讲过的 IP 首部校验和。这是由 xv6 内核算好填进去的二进制数，用来确保前 20 字节在传输中没坏。</li>
+<li>0a 00 02 0f <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_src (4字节，源 IP)十六进制换算：0x0a <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 10，0x00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 0，0x02 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 2，0x0f <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 15。结果：10.0.2.15（发起方 xv6 的 IP），完全对齐了第一行提示里的 IP 10.0.2.15。<br>
+10.0a 00 02 02 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> ip_dst (4字节，目的 IP)十六进制换算：0x0a <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 10，0x00 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 0，0x02 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 2，0x02 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 2。结果：10.0.2.2（接收方 QEMU 网关的 IP）。红线到这里正好闭合。</li>
+</ol>
+<p><em><strong>第三步：红线后面（07d0...）又是什么？</strong></em><br>
+由于刚才第 7 步中 ip_p 的值是 11（UDP），所以红线右边紧挨着的数据，立刻无缝进入了 UDP 的世界：07 d0：UDP 源端口。十六进制 0x07d0 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 十进制 2000。对齐了提示里的 10.0.2.15.2000！64 03：UDP 目的端口。十六进制 0x6403 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 十进制 25603。对齐了提示里的 10.0.2.2.25603！，然后再往后走0x001b，是传送数据的长度，最后两字节00 00两字节是校验的，在这里关闭了，跨过 UDP 的 8 字节报头后，就是最右边通过 ASCII 码显示出来的真正人类数据了：a message from xv6! （一封来自 xv6 的信！）</p>
+<p><a href="https://en.wikipedia.org/wiki/Address_Resolution_Protocol">https://en.wikipedia.org/wiki/Address_Resolution_Protocol</a><br>
+<em><strong>ARP协议(Address Resolution Protocol)</strong></em><br>
+ARP 协议只能在同一个局域网（广播域）内工作，通过广播获取目标 IP 对应的 MAC 地址，路由器不会转发 ARP 广播。当主机访问同一网段的设备时，会先 ARP 查询目标主机的 MAC，然后直接发送数据；当访问不同网段的主机时，由于 ARP 广播无法跨越路由器，因此主机不会查询远端主机的 MAC，而是先获取默认网关（路由器本地网卡）的 MAC，并将数据帧发送给路由器。路由器收到后，根据 IP 头中的目标 IP 查询路由表，确定下一跳，再重新封装新的二层 MAC 地址（源 MAC 为路由器当前出口网卡的 MAC，目的 MAC 为下一跳设备的 MAC）并转发出去。因此，MAC 地址是逐跳变化的，而源 IP 和目的 IP 在整个传输过程中保持不变（不考虑 NAT 等特殊情况）。本质上，交换机根据 MAC 地址转发，而路由器根据 IP 地址转发。<br>
+路由器确实有很多“网卡”：在网络里这叫接口（Interface）。路由器一个接口连你的电脑（IP: 192.0.0.1），另一个接口连单片机（IP: 10.0.0.1）。<br>
+ARP 的目标是网关：当你的电脑发现目标 10.0.0.5 和自己不在同一个网段时，它绝对不会直接去给 10.0.0.5 发 ARP。它会说：“这题超纲了，我找我班主任（默认网关 192.0.0.1）。” 于是电脑发送 ARP 请求网关的 MAC 地址。<br>
+数据包的封装：IP层（三层）：源 IP = 192.0.0.2，目的 IP = 10.0.0.5（IP 沿途死都不变）。MAC层（二层）：源 MAC = 你的电脑 MAC，目的 MAC = 路由器的 192.0.0.1 接口 MAC。<br>
+路由器的偷天换日（二层抹除）：路由器收到这个包，把二层 MAC 头直接撕掉。查路由表发现 10.0.0.5 在另一个接口。<br>
+重新封装发给单片机：路由器从 10.0.0.1 接口把包丢给单片机。此时重新打包二层：源 MAC（也就是你说的 SHA） <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 变成 路由器 10.0.0.1 接口的 MAC！目的 MAC <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 变成 单片机的 MAC。你这个理解拿去大厂面试网络内核岗，面试官都要对你刮目相看！你提到的这个不叫 ARP 中介，它叫 三层路由转发（Layer 3 Routing）。</p>
+<p>0x0806这个Ether Type被用来标识ARP帧</p>
+<pre><code class="language-c">【以太网帧头 14B】
+DstMAC(6) | SrcMAC(6) | Type=0x0806(2)
+
+【ARP数据 28B】
+HWType(2) | ProtoType(2) | HWLen(1) | IPLen(1) | OpCode(2)
+SenderMAC(6) | SenderIP(4)
+TargetMAC(6) | TargetIP(4)
+struct arp_packet
+{
+    uint16_t hw_type;      // 硬件类型 1就代表以太网Ethernet
+    uint16_t proto_type;   // 协议类型 0x0800-&gt;IPv4 0x86DD-&gt;IPv6
+    uint8_t  hw_len;       // MAC地址长度 
+    uint8_t  proto_len;    // IP地址长度
+    uint16_t opcode;       // 操作码 1-&gt;ARP Request 2-&gt;ARP Reply
+
+    uint8_t  sender_mac[6];// 发送者MAC地址（SHA）
+    uint8_t  sender_ip[4]; // 发送者IP地址（SPA）
+
+    uint8_t  target_mac[6];// 目标MAC地址（THA）
+    uint8_t  target_ip[4]; // 目标IP地址（TPA）
+};
+</code></pre>
+<p>假如A为</p>
+<pre><code class="language-c">IP : 192.168.1.10
+MAC: 00:11:22:33:44:55
+</code></pre>
+<p>想找</p>
+<pre><code class="language-c">192.168.1.20
+</code></pre>
+<p>发送的ARP Request</p>
+<pre><code class="language-c">hw_type   = 1;
+proto_type= 0x0800;
+hw_len    = 6;
+proto_len = 4;
+opcode    = 1;
+sender_mac = 00:11:22:33:44:55;
+sender_ip  = 192.168.1.10;
+target_mac = 00:00:00:00:00:00;
+target_ip  = 192.168.1.20;
+</code></pre>
+<p><img src="https://dss544.github.io/post-images/1782118283360.png" alt="" loading="lazy"><br>
+在将数据包发送到B之前，A会先发送一条ARP请求消息——该消息的地址为广播MAC地址FF:FF:FF:FF:FF:FF，同时请求IP地址为192.168.0.55的节点给出响应。网络中的所有节点都会收到这条消息，但只有拥有该IP地址的B会回复。B则会发送一条包含自身MAC地址的ARP响应消息，A会收到这条消息。之后，A就会使用B’的MAC地址来发送数据包了。<br>
+通常，网络节点会维护一个用于关联IP地址与MAC地址的查询缓存。在这个例子中，如果A已经将相关查询信息存储在缓存中，那么它就无需再发送ARP请求了。同样地，当B收到该请求后，它也可以将相关查询信息存储起来，这样B日后需要向A发送数据包时，就不必再通过ARP来查找对方的MAC地址了。最后，当A收到ARP响应后，它可以将该查询信息存储起来，以便将来有类似的数据包需要发送时能够直接使用这些信息。<br>
+<em><strong>ARP探测</strong></em><br>
+ARP 探测（ARP Probe），它是计算机在正式使用一个 IP 地址之前，用来检测局域网内有没有其他人也在用这个 IP（即“IP 地址冲突检测”） 的一种保护机制。</p>
+<p>无论是手动配置，还是DHCP自动分配IP，在把IP分配到网卡之前，都要在局域网里面连续广播几次ARP探测包。如果有人回应代表这个IP已经被占据，没有的话自己就可以使用。探测包数据格式如下：</p>
+<pre><code class="language-c">SHA (Sender Hardware Address - 发送方 MAC)：填你自己的真实 MAC 地址。
+SPA (Sender Protocol Address - 发送方 IP)：填 0.0.0.0
+THA (Target Hardware Address - 目标 MAC)：填全 0（因为你本来就不知道谁在用）。
+TPA (Target Protocol Address - 目标 IP)：填你想探测的、刚拿到的那个 IPv4 地址（比如 192.168.1.50）。
+</code></pre>
+<p><em><strong>ARP 公告</strong></em><br>
+ARP 公告（Gratuitous ARP，GARP）是一种特殊的 ARP 报文，它并不是为了查询 MAC 地址，而是主动向局域网中的其他主机宣布自己的 IP-MAC 映射关系，以更新其他主机的 ARP 缓存。GARP 可以使用 ARP Request 或 ARP Reply 实现，常用于主机启动、网卡更换、IP 冲突检测、负载均衡以及零配置网络等场景。由于主机收到 GARP 后会自动更新 ARP 表，因此攻击者也可以伪造 GARP 报文，将自己的 MAC 地址与网关 IP 关联，从而实施 ARP 欺骗和中间人攻击。公告可以是Request也可以是Reply：</p>
+<pre><code class="language-c">Request
+
+opcode = 1 (Request)
+SHA = 00:11:22:33:44:55
+SPA = 192.168.1.10
+THA = 00:00:00:00:00:00
+TPA = 192.168.1.10
+
+Reply
+
+opcode = 2
+SHA = 00:11:22:33:44:55
+SPA = 192.168.1.10
+THA = 00:11:22:33:44:55
+TPA = 192.168.1.10
+</code></pre>
+<p><em><strong>UDP协议(User Datagram Protocol)</strong></em><br>
+UDP 发包不握手、丢包不管、乱序不理；但它报头只有 8 字节，速度极快、延迟极低，是视频直播、实时游戏和嵌入式轻量级通信的绝对王者。<br>
+TCP会对每一个连接进来的设备创建一个TCB（传输控制块），而UDP没有。TCP在C语言代码中连续两次发送，他可能会把两次发送的字符一起发送，但是UDP是发送椅子，立马在内存给他套上一个8字节UDP头发送出去。</p>
+<p>UDP强行将IP地址和端口号(0-65535)焊接在一起，内核网络栈收到包后，直接看包头的16位端口号，然后扔到对应的C语言进程中，这就叫复用。<br>
+这65536个端口被分成三块，(0~1023)超级用户才能使用，比如80是HTTP网页，SSH是22；<br>
+(1024~49151)是留给各大知名软件登记，比如MySQL数据库默认3306，自己写常用8888 或 9999。<br>
+(49152 ~ 65535)动态/临时端口。0端口发送数据是告诉对面不用回信息。<br>
+“一个 UDP 包，应用层调用 sendto 时，一次最多能发多大的数据？”<br>
+底层 IP 数据包的最大体积是 65535 字节。<br>
+IP 层自己要占掉 20 字节的 IP 头。<br>
+UDP 层自己要占掉 8 字节的 UDP 头。<br>
+留给你应用层的真实数据容量只剩：65535 - 20 - 8 = 65507 字节。<br>
+如果你代码里一次性 sendto 超过了 65507 字节，内核会直接给你报错（Message too long）。</p>
+<p>按照 RFC 1071 的标准定义，UDP 校验和计算采用的是 16位反码求和（Ones' Complement Sum）。大白话就是：把数据切成一个个 16 位的字相加，如果相加过程中最高位产生了进位（溢出到了第 17 位），必须立刻把这个进位绕回到最低位加进去，最后按位取反。源代码如下：</p>
+<pre><code class="language-c">// lwIP 中的进位折叠核心代码
+uint32_t sum = 0;
+// 1. 无脑狂加，根本不管 16 位的进位溢出
+for (int i = 0; i &lt; count; i++) {
+    sum += data[i]; 
+}
+// 2. 终极一气呵成进位折叠
+while (sum &gt;&gt; 16) {
+    sum = (sum &amp; 0xFFFF) + (sum &gt;&gt; 16);
+}
+// 3. 最后取反
+uint16_t checksum = (uint16_t)(~sum);
+</code></pre>
+<p>为什么可以把所有的进位积压到一个 32 位的变量里，留到最后才一次性折叠？中间产生的进位如果不立刻加上去，难道不会影响后续的计算结果吗？<br>
+如果按照字面意思，产生进位立即处理，代码如下：</p>
+<pre><code class="language-c">uint32_t sum = 0;
+for (int i = 0; i &lt; count; i++) {
+    sum += data[i];
+    // 等价于sum%=0xffff
+    if (sum &gt; 0xFFFF) {          // 发现第 17 位
+        sum = (sum &amp; 0xFFFF) + 1; // 立刻砍下来加到尾部
+    }
+}
+</code></pre>
+<p>这种写法的逻辑正确，但在极度缺乏算力的单片机（MCU）上却是致命的：每次循环都要进行一次 if 分支判断和额外的掩码加法操作，这会白白消耗大量宝贵的 CPU 时钟周期。(x+y)%b = ((x%b) + (y%b) )%b，如果我有x个瓶子，我加上y个瓶子，最后我有(x+y)%0xffff个瓶子等价于(x%0xffff+y)%0xffff</p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6-shi-yan-4-wen-jian-xi-tong/">
+              <h3 class="post-title">
+                xv6实验[4]-文件系统
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

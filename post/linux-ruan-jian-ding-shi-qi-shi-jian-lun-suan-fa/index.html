@@ -1,0 +1,294 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>linux软件定时器-时间轮算法 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1783316631787">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="linux软件定时器-时间轮算法 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="#一、 背景与痛点：为什么需要时间轮？
+在操作系统中，管理定时器通常面临一个数据结构上的经典两难问题：
+无序链表：插入极快 O(1)O(1)O(1)，但每次时钟中断检查谁到期了，需要遍历整条链表，时间复杂度 O(N)O(N)O(N)。在成千..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1783316631787" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              linux软件定时器-时间轮算法
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-06-06
+              </span>
+              <span>
+                8 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>#一、 背景与痛点：为什么需要时间轮？<br>
+在操作系统中，管理定时器通常面临一个数据结构上的经典两难问题：<br>
+无序链表：插入极快 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span>，但每次时钟中断检查谁到期了，需要遍历整条链表，时间复杂度 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>N</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(N)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="mclose">)</span></span></span></span>。在成千上万个定时器的场景下，CPU 会被活活累死。<br>
+按时间排序的链表（如 FreeRTOS）：检查到期极快 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span>（只需看头部），但每次插入新定时器需要遍历寻找合适的位置 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>N</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(N)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="mclose">)</span></span></span></span>。<br>
+红黑树：红黑树插入和删除是<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>l</mi><mi>o</mi><mi>g</mi><mi>n</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(logn)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">o</span><span class="mord mathdefault" style="margin-right:0.03588em;">g</span><span class="mord mathdefault">n</span><span class="mclose">)</span></span></span></span>，到期检查取最小键值节点也是，综合性能远优于无序链表与有序单向链表；但仍存在短板：在百万级海量定时器的服务器场景下，单次插入<br>
+开销被海量调用持续放大。<br>
+为了在插入和检查触发上同时追求 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span> 的极致性能，Linux 内核引入了极其优雅的数据结构——多级时间轮（Timer Wheel）算法。</p>
+<p>#二、 核心思想：空间换时间与“多级齿轮”<br>
+Linux 的时间轮本质上是一个基于 32 位无符号整数（jiffies）的哈希表，通过位移（&gt;&gt;）和掩码（&amp;）操作来代替耗时的除法和取余。内核将定时器分为 5 个级别（对应 32 位二进制的不同段位）：TV1（第 1 级）：256 个槽位（Slot），负责低 8 位（0~255 的滴答）。TV2 到 TV5（第 2~5 级）：各 64 个槽位，分别负责接下来的各个 6 位。<br>
+###1. O(1) 的插入（对号入座）<br>
+无论要延时多久，内核只通过两次极其快速的位运算：近期任务（<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>&lt;</mo><mn>256</mn></mrow><annotation encoding="application/x-tex">&lt;256</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mrel">&lt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">5</span><span class="mord">6</span></span></span></span>）：expires &amp; 255，直接挂入 TV1 的对应槽位链表。远期任务：通过 (expires &gt;&gt; 8) &amp; 63，计算出高级表盘（如 TV2）的槽位并挂入。整个过程纯 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span>，毫无遍历操作。<br>
+##2. 2. O(1) 的执行与降级级联（Cascade）日常触发<br>
+系统的“内部秒针”（timer_jiffies）每走一步，就直接拔出 TV1 当前槽位的整条链表，一口气执行完毕。级联进位：当 TV1 转满一圈（走完 256 步，低 8 位归零）时，触发 Cascade（级联）。内核会去 TV2 拉开对应的抽屉，把里面的远期定时器全部摘下来，重新计算它们剩余的时间，像天女散花一样把它们降级重新散落插入到 TV1 的 256 个槽位中。</p>
+<p>#三、 核心源码解析（基于 Linux 4.1.15）<br>
+在 kernel/time/timer.c 中，整个算法由以下三个核心函数驱动：<br>
+##1. 插入引擎：<br>
+__internal_add_timer()所有 add_timer 或 mod_timer 最终都会调用此函数。它内部通过大量的 if...else if 和位移操作（&gt;&gt;），瞬间计算出定时器应该归属 TV1 还是 TVx，并使用标准的 list_add_tail 将其挂入双向链表。</p>
+<pre><code class="language-c">static void __internal_add_timer(struct tvec_base *base, struct timer_list *timer)
+{
+    unsigned long expires = timer-&gt;expires;
+    // 1. 算出相对当前内部秒针的差值（还有多久到期）
+    unsigned long idx = expires - base-&gt;timer_jiffies;
+    struct list_head *vec;
+
+    // 2. 根据差值范围，决定放入哪一级的表盘
+    if (idx &lt; TVR_SIZE) { // 近期任务 (差值 &lt; 256)
+        int i = expires &amp; TVR_MASK; // 等价于 expires % 256
+        vec = base-&gt;tv1.vec + i;    // 定位 TV1 槽位
+    } else if (idx &lt; 1 &lt;&lt; (TVR_BITS + TVN_BITS)) { // 稍远任务
+        int i = (expires &gt;&gt; TVR_BITS) &amp; TVN_MASK;  // 抹掉低8位后，等价于 % 64
+        vec = base-&gt;tv2.vec + i;                   // 定位 TV2 槽位
+    } else if (idx &lt; 1 &lt;&lt; (TVR_BITS + 2 * TVN_BITS)) {
+        int i = (expires &gt;&gt; (TVR_BITS + TVN_BITS)) &amp; TVN_MASK;
+        vec = base-&gt;tv3.vec + i;
+    } else if (idx &lt; 1 &lt;&lt; (TVR_BITS + 3 * TVN_BITS)) {
+        int i = (expires &gt;&gt; (TVR_BITS + 2 * TVN_BITS)) &amp; TVN_MASK;
+        vec = base-&gt;tv4.vec + i;
+    } else if ((signed long) idx &lt; 0) { // 边界保护：超时或已被处理
+        vec = base-&gt;tv1.vec + (base-&gt;timer_jiffies &amp; TVR_MASK);
+    } else { // 极遥远的未来任务，放入最高级 TV5
+        int i;
+        if (idx &gt; MAX_TVAL) {
+            idx = MAX_TVAL;
+            expires = idx + base-&gt;timer_jiffies;
+        }
+        i = (expires &gt;&gt; (TVR_BITS + 3 * TVN_BITS)) &amp; TVN_MASK;
+        vec = base-&gt;tv5.vec + i;
+    }
+    // 3. O(1) 尾插法挂入目标槽位的双向链表
+    list_add_tail(&amp;timer-&gt;entry, vec);
+}
+</code></pre>
+<p>##2. 执行心脏：<br>
+__run_timers()在 TIMER_SOFTIRQ 软中断中被调用。它包含一个 while (time_after_eq(jiffies, base-&gt;timer_jiffies)) 的追赶循环。只要内部秒针落后于真实时间，就会不断推进。极致的无锁回调：在拔出当前槽位的链表后，内核会果断释放自旋锁（spin_unlock_irq），让用户的定时器回调函数自由执行，防止阻塞其他 CPU 核心操作时间轮，执行完毕后再把锁拿回来。</p>
+<pre><code class="language-c">static inline void __run_timers(struct tvec_base *base)
+{
+    struct timer_list *timer;
+    spin_lock_irq(&amp;base-&gt;lock); // 上锁，保护时间轮不被并发修改
+    if (catchup_timer_jiffies(base)) {
+        spin_unlock_irq(&amp;base-&gt;lock);
+        return;
+    }
+    // 1. 追赶循环：如果内部秒针落后于真实时间 jiffies，就一步步往前走
+    while (time_after_eq(jiffies, base-&gt;timer_jiffies)) {
+        struct list_head work_list;
+        struct list_head *head = &amp;work_list;
+        // 获取 TV1 当前的槽位号 (0~255)
+        int index = base-&gt;timer_jiffies &amp; TVR_MASK;
+
+        // 2. 级联触发逻辑 (核心齿轮运转)
+        // 如果 index == 0，说明 TV1 转满了一圈，利用 &amp;&amp; 的短路特性依次尝试降级高级表盘
+        if (!index &amp;&amp;
+            (!cascade(base, &amp;base-&gt;tv2, INDEX(0))) &amp;&amp;
+                (!cascade(base, &amp;base-&gt;tv3, INDEX(1))) &amp;&amp;
+                    !cascade(base, &amp;base-&gt;tv4, INDEX(2)))
+            cascade(base, &amp;base-&gt;tv5, INDEX(3));
+            
+        ++base-&gt;timer_jiffies; // 秒针向前走一格
+        // 3. 把 TV1 当前槽位的链表“连根拔起”放到 work_list 中，并清空原槽位
+        list_replace_init(base-&gt;tv1.vec + index, head);
+        // 4. 挨个引爆定时器
+        while (!list_empty(head)) {
+            void (*fn)(unsigned long);
+            unsigned long data;
+            bool irqsafe;
+            timer = list_first_entry(head, struct timer_list, entry);
+            fn = timer-&gt;function;
+            data = timer-&gt;data;
+            irqsafe = tbase_get_irqsafe(timer-&gt;base);
+            timer_stats_account_timer(timer);
+            base-&gt;running_timer = timer;
+            detach_expired_timer(timer, base); // 从链表中彻底脱离
+            // 5. 危险动作警告：剥离锁执行！
+            // 执行用户的回调函数时，必须放开自旋锁，防止阻塞其他 CPU 操作时间轮
+            if (irqsafe) {
+                spin_unlock(&amp;base-&gt;lock);
+                call_timer_fn(timer, fn, data); // 自由执行回调
+                spin_lock(&amp;base-&gt;lock);         // 拿回锁，处理下一个
+            } else {
+                spin_unlock_irq(&amp;base-&gt;lock);
+                call_timer_fn(timer, fn, data); 
+                spin_lock_irq(&amp;base-&gt;lock);
+            }
+        }
+    }
+    base-&gt;running_timer = NULL;
+    spin_unlock_irq(&amp;base-&gt;lock);
+}
+</code></pre>
+<p>##3. 搬家公司：<br>
+cascade()当 __run_timers 发现当前秒针的低 8 位全是 0（index == 0）时调用。它负责把高级表盘（如 TV2）对应槽位里的链表连根拔起，并遍历其中的每一个旧定时器，重新调用 internal_add_timer() 将它们降级塞回低级表盘。由于 C 语言的短路求值特性，级联操作代码写得极其精炼。</p>
+<pre><code class="language-c">static int cascade(struct tvec_base *base, struct tvec *tv, int index)
+{
+    /* 把高级表盘 tv 中 index 槽位的所有定时器，降级搬运到下一级 */
+    struct timer_list *timer, *tmp;
+    struct list_head tv_list;
+    // 1. 将目标槽位里的所有定时器连根拔起，存入临时链表 tv_list
+    list_replace_init(tv-&gt;vec + index, &amp;tv_list);
+    // 2. 遍历刚刚拔出来的所有旧定时器
+    list_for_each_entry_safe(timer, tmp, &amp;tv_list, entry) {
+        BUG_ON(tbase_get_base(timer-&gt;base) != base);
+        // 3. 核心：由于此时 base-&gt;timer_jiffies 已经变大，
+        // 重新调用添加函数时，它们会被自动“降级”分配到更低级的表盘（如 TV1）
+        __internal_add_timer(base, timer);
+    }
+    return index; // 返回槽位号，决定是否触发更上一级的联动
+}
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/xv6-shi-yan-1-qi-dong-liu-cheng-fen-xi-he-xi-tong-diao-yong/">
+              <h3 class="post-title">
+                xv6实验[1]-启动流程分析和系统调用
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
