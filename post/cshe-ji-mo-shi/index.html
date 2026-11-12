@@ -1,0 +1,220 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>c++设计模式 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="c++设计模式 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="简单工厂模式
+以超市收费平台为例  好处是主函数逻辑完全不变动 计算出最终收取顾客费用 添加算法只需要继承CashSuper类重写acceptCash代码，然后在工厂里面返回类即可。
+策略模式
+是一种多选一（替换算法），比如在'打折'和'满..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              c++设计模式
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-07-31
+              </span>
+              <span>
+                6 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p><code>简单工厂模式</code><br>
+以超市收费平台为例  好处是主函数逻辑完全不变动 计算出最终收取顾客费用 添加算法只需要继承CashSuper类重写acceptCash代码，然后在工厂里面返回类即可。</p>
+<p><code>策略模式</code><br>
+是一种多选一（替换算法），比如在'打折'和'满减'里二选一</p>
+<p><code>装饰模式</code><br>
+是多选多，一层叠一层 比如先打折再用优惠卷最后扣积分，功能能像串糖葫芦一样无限叠加。</p>
+<p><code>代理模式</code><br>
+给真实对象找一个“替身大管家”，替身负责拦截和处理所有外围的杂活（鉴权、缓存、延迟加载），让真实对象只专注核心业务。<br>
+代理模式和装饰模式在代码结构上几乎是双胞胎——它们都是搞一个新类，里面包着一个旧类，并且实现同一个接口。</p>
+<p><code>工厂模式</code><br>
+解决了简单工厂模式不支持开闭原则，利用专人专项，对每一个加分操作用一个加法类。</p>
+<p><code>深拷贝和浅拷贝</code><br>
+每次new一个对象，如果初始化信息不改变的话，拷贝可以节省运行构造函数的时间。<br>
+注意，c++默认是浅拷贝，如果有指针变量，指向地址是相同的，可能造成同一次图像释放。</p>
+<p><code>观察者订阅者</code><br>
+lvgl中，冒泡机制就是一个while循环不断向父节点传递，调用回调函数。观察者订阅者的缺点就是很多时候别的函数以及定义好，这时候只需要把传统观察者订阅者代码通知者改为一个回调函数数组依次执行就可以了。</p>
+<p><code>模板方法模型</code><br>
+骨架父类写好了，子类只需要填写具体函数。适合于有很多重复代码，例如之前小智代码就是。</p>
+<p><code>外观模式</code><br>
+类似于添加一个中间组件，方便调用者调用而不必关心内在逻辑。</p>
+<p><code>建造者模式</code><br>
+类似于你只需要填表完成某个部分，流程单独一个类已经做好了。</p>
+<p>c++的类可以通过返回this指针实现函数后面接着函数</p>
+<p><code>发布订阅者</code><br>
+lvgl有一个向上通知代码，通过一个while循环向上递归</p>
+<p><code>抽象工厂模式</code><br>
+工厂模式只能返回一种类，这个工厂模式是把相同部分结合到一个工厂里面，然后实现代码，这样上层调用代码不需要修改，只需要修改底层。抽象工厂-&gt;具体工厂-&gt;抽象产品-&gt;具体产品</p>
+<p><code>适配器模式</code><br>
+一般不想动老代码，在新代码使用适配器让代码接口一致。</p>
+<p><code>备忘录模式</code><br>
+在不破坏类内部隐私（封装性）的前提下，实现“一键撤销 / 恢复历史状态”。</p>
+<p><code>组合模式</code><br>
+感觉组合模式就是向上冒泡的翻转，是向下的，分为叶子节点和复合节点。每个叶子节点里面没有数组了，但是复合节点里面有一个数组，里面包含复合节点和叶子节点，在执行一个操作的时候会递归执行下面所有操作。一个例子就是复制一个文件和复制一个文件夹操作其实一样，文件就是叶子节点，文件夹就是复合节点。<br>
+客户端解耦：当你调用 root-&gt;LineOfDuty() 时，你根本不需要去写多层循环或用 if-else 去区分“这是总公司还是办事处，这是 HR 还是财务”。<br>
+自动递归（树状广播）：ConcreteCompany::LineOfDuty() 会自动遍历它的 children 数组。只要总公司一声令下，指令就会沿着这棵树自动传遍所有级别的分公司，直到被末端的叶子部门（HR/财务）接收并执行。</p>
+<p><code>单例模式</code><br>
+在单例模式中，要把构造函数private化，禁用拷贝构造函数 Logger(const Logger&amp;) = delete; 以及禁用拷贝赋值运算符 Logger&amp; operator = (const Logger&amp;) = delete;。</p>
+<p><code>桥接模式</code><br>
+桥接模式的本质，就是把多维度的复杂继承拆开，在主体类里定义另一个维度抽象接口的成员变量（用“组合”代替“继承”），让两个维度可以各自独立扩展。</p>
+<p><code>命令模式</code><br>
+命令模式就是把“发指令的控制器”与“真正干活的电机”解耦，把“设置转速/延时”打包成自带撤回功能的操作卡片，控制器只管按顺序发卡片或退卡片，完全不需要关心电机底层的具体实现。</p>
+<p><code>职责链模式</code><br>
+类似一个链表，数据通过之后依次执行。</p>
+<p><code>中介模式</code><br>
+各个类调用不用直接调用，通过一个中转站。比如一个计算器界面，有按钮还有显示部分，按钮按下的回调函数由中介来执行然后显示在显示屏。</p>
+<p><code>享元模式</code><br>
+享元模式的核心就是：提取相同点作为“公共实例”，剥离不同点作为“调用参数”，从而用极少数的实例满足大量的业务需求，彻底节省内存开销。</p>
+<p>explicit关键字只允许显示转化，当构造函数只有一个参数或者第一个参数其余参数已知。</p>
+<p><code>解释器模式</code><br>
+这个可以用在AT数据解析，简单命令行。比如&quot;O 2 E 0.5 G 0.5 T 500&quot;这个，可以根据开头判断命令，返回一个类处理，这样是需要单独处理每一个处理类。如果要添加新功能只需要在判断哪一个类就行。</p>
+<p><code>访问者模式</code><br>
+访问者模式用“极其难添加新数据类”的代价，换取了“极其容易添加新操作”的能力。对象和操作是两码事。</p>
+<figure data-type="image" tabindex="1"><img src="https://dss544.github.io/post-images/1788319845107.png" alt="" loading="lazy"></figure>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/cheng-xu-yuan-zi-wo-xiu-yang/">
+              <h3 class="post-title">
+                程序员自我修养
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

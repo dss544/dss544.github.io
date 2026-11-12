@@ -1,0 +1,413 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>程序员自我修养 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="程序员自我修养 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="可以学习下源码TinyExpr项目
+在ubuntu下载了sudo apt install qemu-user-static binfmt-support 所以可以直接运行arm可执行文件不需要再开启qemu
+32位机中一条汇编指令4字节 比..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              程序员自我修养
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-07-23
+              </span>
+              <span>
+                14 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>可以学习下源码TinyExpr项目</p>
+<p>在ubuntu下载了sudo apt install qemu-user-static binfmt-support 所以可以直接运行arm可执行文件不需要再开启qemu</p>
+<p>32位机中一条汇编指令4字节 比如 mov r0, #100<br>
+1110 (高 4 位)：条件码（代表无条件执行 AL）。<br>
+0011101：操作码（告诉 CPU 这是一条 MOV 指令）。<br>
+0000：目标寄存器（告诉 CPU 存到 R0 里面）。<br>
+0000 0110 0100 (最后的 12 位)：这就真正留给“立即数”的空间！</p>
+<p>预编译(.c-&gt;.i) 替换#define #include<br>
+编译(.i-&gt;.s)   语法检查优化 部分全局变量地址留空<br>
+汇编(.s-&gt;.o) 生成可执行文件(不可运行)<br>
+链接(.o-&gt;.out) 把全部变量地址补全 生成真正可执行文件</p>
+<p>可以通过修改数据的可执行条件运行机器码，一般如果一个高函数被高频调用，可以把他转化为机器码放在ram里面，而不是默认的flash，或者通过__attribute__这个关键字来放入，一般都用__attribute__关键字，因为用c转机器码很麻烦，不能调用全局变量和其他函数。</p>
+<pre><code class="language-c">#include &lt;stdio.h&gt;
+#include &lt;sys/mman.h&gt;
+
+__attribute__((aligned(4096))) char codebuf[] = {
+    0x48, 0xc7, 0xc0, 0x3c, 0x00, 0x00, 0x00, // mov $60, %rax
+    0x48, 0x31, 0xff,                         // xor %rdi, %rdi
+    0x0f, 0x05                                // syscall
+};
+int main()
+{
+    void (*f)() = (void *)codebuf;
+    mprotect(codebuf, sizeof(codebuf), PROT_READ|PROT_WRITE|PROT_EXEC);    
+    f();
+    printf(&quot;I am alive!\n&quot;);
+    return 0;
+}
+</code></pre>
+<p>高地址<br>
+0xFFFFFFFF<br>
+┌──────────────────────────┐<br>
+│      ZONE_HIGHMEM        │<br>
+├──────────────────────────┤<br>
+│      ZONE_NORMAL         │<br>
+├──────────────────────────┤<br>
+│      ZONE_DMA            │<br>
+├──────────────────────────┤<br>
+│                          │<br>
+│       命令行参数         │（栈顶部）<br>
+│       环境变量           │<br>
+├──────────────────────────┤<br>
+│         .stack           │<br>
+├──────────────────────────┤<br>
+│          共享库           │<br>
+│       Shared Library     │<br>
+├──────────────────────────┤<br>
+│          heap            │<br>
+├──────────────────────────┤<br>
+│          .bss            │<br>
+├──────────────────────────┤<br>
+│          .data           │<br>
+├──────────────────────────┤<br>
+│          .text           │<br>
+├──────────────────────────┤<br>
+│        未使用空间         │<br>
+│      虚拟地址空间         │<br>
+├──────────────────────────┤<br>
+│                          │<br>
+│       程序头部等区域      │<br>
+├──────────────────────────┤<br>
+│       0x00000000         │<br>
+└──────────────────────────┘<br>
+低地址<br>
+栈是往低地址增长 堆是往高地址增长<br>
+然后gcc -c 一个main.c文件 <code>只预编译 编译 汇编</code> 不链接 一个mian.o文件存储如下 可以ll看其真实大小<br>
++------------------------------------------+  0 字节<br>
+|              ELF Header                  |<br>
+| (封面：记录书本格式、目录表在最后一页等)    |  64 字节<br>
++------------------------------------------+<br>
+|              .text (代码数据)            |<br>
++------------------------------------------+<br>
+|              .data (全局变量数据)        |  各个段的正文内容<br>
++------------------------------------------+  (连续存放，中间没有夹杂结构体)<br>
+|              ... 其他段内容 ...          |<br>
++------------------------------------------+<br>
+|              .shstrtab (段名字串池)      |<br>
++------------------------------------------+  713 ~ 720 字节 (补齐对齐)<br>
+|                                          |  720 字节<br>
+|       Section Header Table (节头表)      |<br>
+|                                          |<br>
+|  [0]  Elf64_Shdr (NULL 节描述)            |  64 字节<br>
+|  [1]  Elf64_Shdr (.text 描述: 偏移/大小) |  64 字节<br>
+|  [2]  Elf64_Shdr (.data 描述: 偏移/大小) |  64 字节<br>
+|  ...                                     |<br>
+|  [12] Elf64_Shdr (.shstrtab 描述)        |  64 字节<br>
+|                                          |<br>
++------------------------------------------+  1552 字节 (文件末尾)</p>
+<ol>
+<li>
+<p>.symtab（Symbol Table，符号表）<br>
+存什么：存放所有符号（函数名、全局变量、静态变量）的定长元数据。<br>
+它的本质是一个结构体数组（每个结构体 Elf64_Sym 固定占用 24 字节），里面记录：<br>
+该符号属于哪个段（例如属于 .text、.data 还是 .bss）。<br>
+符号的内存偏移地址 / 相对位置。<br>
+符号的大小（比如 int arr[100] 的大小就是 400 字节）。<br>
+符号的名字偏移量（一个整数，指向 .strtab 中该名字字符串的起始下标）。</p>
+</li>
+<li>
+<p>.strtab（String Table，通用字符串表）<br>
+存什么：存放函数名、变量名（符号名）的纯文本字符串。<br>
+它就是一个以 \0 分隔的纯字符数组。比如 &quot;main\0count\0global_buf\0&quot;。<br>
+symtab 中的结构体只需要存一个数字（例如偏移量 5），就能直接在 strtab 找到 &quot;count&quot; 这个名字。</p>
+</li>
+<li>
+<p>.shstrtab（Section Header String Table，节区名字字符串表）<br>
+存什么：专门存放各个段自己的名字（Section Names）。<br>
+它也是一个纯字符数组，存的是 &quot;.text\0.data\0.bss\0.symtab\0.shstrtab\0&quot; 等段名。</p>
+</li>
+</ol>
+<p><code>链接过程</code><br>
+合并所有obj段 调整段偏移和段长度 合并符号表 进行符号解析 分配虚拟内存地址 符号重定位(变量变成地址 然后函数变成指令（相对地址 下一条指令地址加上替换后相对地址）)</p>
+<p><code>程序运行过程</code><br>
+创建虚拟空间和内存映射 构建页目录和页表  然后加载代码段和数据段 最后把可执行文件入口写入cpi的pc寄存器<br>
+可执行文件比汇编文件多了program headers 里面有两个loader项 按页面对齐 把那些段放在这里面</p>
+<p>阶段一：函数调用与建栈（进入子函数）<br>
+第 1 步：从右向左压入形参（由 Caller / main 执行）push 20（参数 b）push 10（参数 a）esp 持续向下移动。<br>
+第 2 步：压入返回地址并跳转（由 call 指令硬件自动执行）将 call 下一行指令地址（图中的 0040109A）自动压入栈顶。将 CPU 的 PC 指针（EIP/RIP）修改为子函数入口地址，开始跳转。<br>
+第 3 步：保护旧栈底并立新栈底（标准序言 Prologue）push ebp：把上一层函数的栈底值（图中的 0x100）压入栈中备份。mov ebp, esp(函数参数)：将当前栈顶赋值给 ebp，作为新函数专属的基准零点（栈底）。<br>
+第 4 步：开辟局部变量空间与寄存器保护sub esp, 44h：栈顶继续向下移动，为局部变量 temp（[ebp-4]）预留空间。push ebx/esi/edi：备份被调用者保存寄存器，随后刷入 0xCC 缓冲区。阶段二：函数返回与销毁（退出子函数）<br>
+第 5 步：恢复寄存器并释放局部变量（esp 先回退）pop edi/esi/ebx：按相反顺序还原寄存器现场。mov esp, ebp：直接把栈顶拉回到 ebp 处，一瞬间销毁所有局部变量。<br>
+第 6 步：恢复旧栈底与跳转返回（ebp 回退 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> 修改 PC）pop ebp：从栈顶弹出旧基址（0x100）送回 ebp 寄存器，ebp 瞬间恢复为 main 的栈底。ret：从栈顶弹出返回地址（0040109A）赋值给 PC 寄存器（EIP/RIP），硬件自动跳回 main 函数。add esp, 8（平栈）：main 函数将之前压入的两个参数（10 和 20）从栈中弹出丢弃，整个栈完全复原。具体如下</p>
+<p>======================= [ 低地址 / 栈顶 esp 方向 ] =======================<br>
+开辟栈帧并填充  0xcccccccc<br>
+┌───────────────────────────────────────────────┐<br>
+│  temp = 30                    [ ebp - 4 ]     │  &lt;--- sum 函数的局部变量<br>
+├───────────────────────────────────────────────┤<br>
+│  0x100                        [ ebp ]         │  &lt;--- sum 栈底 (Saved EBP，保存 main 的旧栈底)<br>
+├───────────────────────────────────────────────┤<br>
+│  0040109A                     [ ebp + 4 ]     │  &lt;--- 返回地址 (call 下一行指令地址)<br>
+├───────────────────────────────────────────────┤<br>
+│  10                           [ ebp + 8 ]     │  &lt;--- 形参 a (0x0018fee8)<br>
+├───────────────────────────────────────────────┤<br>
+│  20                           [ ebp + 0Ch ]   │  &lt;--- 形参 b (0x0018feec)<br>
+├───────────────────────────────────────────────┤<br>
+│                                               │<br>
+│            ( main 函数栈帧中间区域 )           │  &lt;--- 包含安全垫/对齐填充/临时空间<br>
+│                                               │<br>
+├───────────────────────────────────────────────┤<br>
+│  ret = 30                     [ ebp - 0Ch ]   │  &lt;--- main 函数局部变量 ret<br>
+├───────────────────────────────────────────────┤<br>
+│  b = 20                       [ ebp - 8 ]     │  &lt;--- main 函数局部变量 b<br>
+├───────────────────────────────────────────────┤<br>
+│  a = 10                       [ ebp - 4 ]     │  &lt;--- main 函数局部变量 a<br>
+├───────────────────────────────────────────────┤<br>
+│  main 的 Saved EBP            [ ebp ]         │  &lt;--- main 函数的栈底 (值为上一层栈底)<br>
+└───────────────────────────────────────────────┘</p>
+<p>======================= [ 高地址 / 栈底 0x100 方向 ] =====================</p>
+<p>restrict 到底在保证什么？<br>
+它的本质是一个“契约”：你（程序员）向编译器做出法律声明一样保证——“在当前作用域内，访问该指针所指内存区域的唯一途径就是通过这个指针本身，绝没有任何其他指针会指向这块内存重叠的部分。”<br>
+位于文件末尾的节头表（Section Header Table）中，每个 64 字节结构体里的 sh_name 字段，就是通过偏移量来这个表里查询段名的。</p>
+<pre><code class="language-c">// 版本 1：普通指针
+void foo_normal(int *a, int *b, int *val) {
+    *a += *val;
+    *b += *val; // 这里*val要读取两次
+}
+
+// 版本 2：加上 restrict
+void foo_restrict(int *restrict a, int *restrict b, int *restrict val) {
+    *a += *val;
+    *b += *val;// *val读取一次即可
+}
+
+foo_normal:
+     .cfi_startproc
+  9     movl    (%rdx), %eax
+ 10     addl    %eax, (%rdi)
+ 11     movl    (%rdx), %eax
+ 12     addl    %eax, (%rsi)
+ 13     ret
+
+foo_restrict:
+22     .cfi_startproc
+ 23     movl    (%rdx), %eax
+ 24     addl    %eax, (%rdi)
+ 25     addl    %eax, (%rsi)
+ 26     ret
+s
+</code></pre>
+<p>需求推荐命令看各段大小概况size -A main.o<br>
+看完整的段表（Section Table）readelf -S main.o<br>
+按大小列出所有变量和函数nm -S --size-sort main.o<br>
+查看完整符号表及所属段readelf -s main.o<br>
+查看某个段的二进制/文本内容objdump -s -j &lt;段名&gt; main.o<br>
+查看重定位表项readelf -r main.o</p>
+<p>查栈越界踩内存：用 ASan（加上 -static-libasan 即可秒杀）；<br>
+查堆内存泄漏与生命周期：用 Valgrind。</p>
+<p>未初始化的全局变量 没加static的 刚开始先放入COMMON块，看后续合并，定义初值（包括0）的变成强符号直接高在bss段或者data段。两个强符号报错，强覆盖弱。利用objdump -h 查看.o文件的时候，CONTENTS（在文件中有实际内容，占用磁盘），ALLOC（运行时需要分配内存），LOAD（需要从磁盘加载到内存），RELOC（包含重定位信息），CODE（包含可执行机器指令），DATA（包含程序数据），READONLY（只读权限）。</p>
+<p>代码折叠更加好看<br>
+#pragma region 任务分配<br>
+#pragma endregion</p>
+<p>c++再编译的hi后会对函数名修改<br>
+比如int func(int)变成 _Z4funci 相同参数不同返回值会报错，原因可能也是这个，如果是在命名空间或者类中，int N::C::func(int)会变成 _ZN1N1C4funcEi</p>
+<p>一般来说VMA=lMA，但是嵌入式系统不一定，程序再flash，上电要赋值到ram。加const的变量节省了ram空间，vma=lma。<br>
+[ Flash (ROM) ]                               [ SRAM (RAM) ]<br>
++-------------------+                          +-------------------+<br>
+| .text (代码)       | &lt;-- VMA == LMA (CPU直接执行) |                   |<br>
+| .rodata (常量)    | &lt;-- VMA == LMA           |                   |<br>
++-------------------+                          |                   |<br>
+| .data 初始值 (LMA) | --- 启动阶段复制到 RAM ---&gt; | .data 变量区(VMA)  |<br>
++-------------------+                          +-------------------+<br>
+| .bss 变量区(清零)  |<br>
++-------------------+<br>
+objdump -r a.o 查看a.o需要重定位的地方</p>
+<p>gcc -Wl,--verbose &gt; custom.lds 可以试着自己再原有链接脚本修改</p>
+<p>PAE 物理地址扩展 比如32位机器要想访问4gb以上的就要通过类似窗口一样的操作，不停mmap来。<br>
+当我在终端./a.o的时候，会出现</p>
+<p><code>全盘记账，但不动物理内存：</code> execve 读取 ELF 头后，会一次性为所有需要加载的段（.text 代码段、.data 数据段等）建立好完整的 VMA 树。这一步仅仅是在内核空间登记了“哪段虚拟地址范围对应磁盘文件的哪个位置”，但实际上根本没有分配任何物理内存，也没有从磁盘读取任何代码数据。<br>
+<code>直接放权，强制起跑：</code> VMA 树建立完毕后，内核不做任何预加载，直接将 CPU 的 PC 指针强行设置到 ELF 记载的入口虚拟地址（通常位于 .text 段），并让 CPU 开始执行。<br>
+<code>起跑即摔倒（首指缺页）：</code> 因为物理内存中此时是空的，CPU 在尝试抓取第一条指令时就会立刻“踩空”，从而触发进程生命周期中的第一次缺页中断。<br>
+<code>按需填坑：</code> 内核捕获到这个中断，拿到入口的虚拟地址去查刚刚建好的 VMA 树，算出第一条指令在磁盘文件里的精确偏移量。直到这一刻，内核才真正驱动硬盘，把包含这第一条指令的 4KB 数据读入物理内存，建立页表映射，最后让 PC 指针重试执行。<br>
+<code>后续循环：</code> 随着程序继续往下跑，只要碰到了没有映射的虚拟地址（无论是新的代码还是数据），就再次触发缺页，循环上述找 VMA 和读盘的过程。</p>
+<p>文件类型                            核心关注点          排列方式            地址状态<br>
+.o 目标文件节（Section）级别仅字节对齐，文件内紧凑无缝均为相对偏移 0x0，带重定位表待回填ELF 可执行文件段（Segment）级别文件内依然紧凑排列，物理页在接壤处复用并双重映射已被链接器分配固定虚拟地址（VA）<br>
+elf文件在运行时候采用双重映射，就比如一个内存中105有4字节是只读后面5字节只写，在物理内存紧凑排列的，然后在映射会被映射两次，比如0x80000400 0x80000500 保证4kb对齐映射这个物理页，然后基于不同权限，偏移量虚拟地址固定了，记住虚拟内存不占空间。</p>
+<p>在编译链接阶段，Lib.so 参与进来充当的是“符号接口说明书与质检员”，链接器只借它的符号表来做合法性校验、建立 GOT/PLT 占位符并记下依赖关系，绝不拷贝其内部的具体实现代码。</p>
+<p>grep -A 5是找到匹配行之后多打印5行 objdump -d 反汇编代码 -M intel是以interl格式查看，在调用外部函数的时候 实际是调用比如puts，实际调用puts@plt，第一行代码就是跳入got里面存到地址，如果是第一次，就是到下一行填写好got表，如果是第二次就是直接运行这个函数。、</p>
+<p>😋在gcc编译.so动态链接库的时候 如果只加shared不加fpic参数，会产生装载重定位，它的数据段时多个副本，代码段会被修改，因为用了固定地址，在各个程序会触发写时复制拖慢速度，达不到代码段共享的目的。解决方法就是地址无关代码，就是把代码段需要修改的部分剥离出来放在数据段，这样代码段就能共用，反正数据段每个程序都有一个副本。<br>
+dlopen能在运行的时候加载动态库函数，实现类似插件功能。</p>
+<p>所有的相同类A公用一个虚函数表 ，类A开头存放一个指针，指向这个虚函数表地址。虚函数表本质是一个指针数组，当子类重写父亲函数，这张表会重新生成一份。</p>
+<pre><code class="language-c++">void task6()
+{
+    typedef void(*Func)(void *);
+    class Base {
+    public:
+        virtual void sayHello() {
+            cout &lt;&lt; &quot;Hello from Base!&quot; &lt;&lt; endl;
+        }
+    };
+    class Derived : public Base {
+    public:
+        void sayHello() override {
+            cout &lt;&lt; &quot;Hello from Derived!&quot; &lt;&lt; endl;
+        }
+    };
+    Derived a;
+    // 告诉编译器8字节读取
+    auto vptr = reinterpret_cast&lt;void**&gt;(&amp;a);
+    // *vptr就是地址 强转为void **获取了函数指针数组
+    auto vtable = reinterpret_cast&lt;void**&gt;(*vptr);
+    auto Test = reinterpret_cast&lt;Func&gt;(vtable[0]);
+    cout &lt;&lt; &quot;Bypassing C++ syntax to call virtual function directly: &quot; &lt;&lt; endl;
+    Test(&amp;a);
+}
+</code></pre>
+<p><strong>attribute</strong>((constructor(105)))使用这个可以在main函数之前调用函数，数值越低优先级越高（越早执行），<em>attribute</em>_((destructor(105))) 使用这个在main函数之后调用函数 数值数值越低优先级越高（越后执行）</p>
+<p>longjmp和setjmp比goto功能强，能够实现不同函数之间的跳转。</p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/arm-hui-bian/">
+              <h3 class="post-title">
+                ARM汇编
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

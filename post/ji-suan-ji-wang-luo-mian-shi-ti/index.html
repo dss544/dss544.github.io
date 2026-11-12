@@ -1,0 +1,249 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>计算机网络面试题 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="计算机网络面试题 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="
+应用层       ：负责给应用程序提供统一接口
+表示层       ：负责把数据转化成兼容另一个系统能识别的格式
+会话层       ：负责建立、管理和终止表示层实体之间的通信会话
+传输层       ：负责端对端的数据传输
+网络层  ..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              计算机网络面试题
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-11-08
+              </span>
+              <span>
+                7 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p><img src="https://dss544.github.io/post-images/1794099562593.png" alt="" loading="lazy"><br>
+应用层       ：负责给应用程序提供统一接口<br>
+表示层       ：负责把数据转化成兼容另一个系统能识别的格式<br>
+会话层       ：负责建立、管理和终止表示层实体之间的通信会话<br>
+传输层       ：负责端对端的数据传输<br>
+网络层       ：负责数据的路由、转发、分片<br>
+数据链路层：负责数据的封帧和差错检测，以及MAC寻址<br>
+物理层       ：负责在物理介质上传输比特流</p>
+<p>常见具体状态码：</p>
+<pre><code class="language-c">200 OK：请求成功；201 Created：成功创建资源；204 No Content：请求成功，但是没有响应体。\
+206 Partial Content：成功返回部分资源，常用于断点续传。
+301 / 302：永久重定向 / 临时重定向；304 Not Modified：协商缓存命中，客户端使用本地缓存的响应体。
+400 Bad Request：请求格式等有问题；401 Unauthorized：缺少有效的身份凭证；403 Forbidden：服务器拒绝访问，常见于权限不足。
+404 Not Found：资源不存在；405 Method Not Allowed：资源不支持该请求方法；429 Too Many Requests：请求过于频繁，被限流了。
+500 Internal Server Error：服务器内部错误；502 Bad Gateway：网关访问上游失败或无效响应；503 Service Unavailable：服务暂时不可用；504 Gateway Timeout：网关等待上游超时。
+</code></pre>
+<p>301永久重定向，302临时重定向，但浏览器可能把post改为get。如果要不变就用308永久重定向，307临时重定向。</p>
+<p>ngix收到无效响应，返回502。ngix超过自己配置等待时间还未收到上游响应时间，返回 504 错误。</p>
+<p>http1.1和2.0区别：<br>
+头部压缩，二进制分帧，多路复用，流量控制。</p>
+<p>http3和2.0区别：<br>
+建立连接更快，支持连接迁移（是udp），减少队头阻塞。</p>
+<p>DNS：53 HTTP:80 HTTPS：443</p>
+<p>打开网页发生的事情 HTTP1/2为例：<br>
+解析URL-&gt;DNS解析-&gt;确定下一跳-&gt;建立TCP连接-&gt;TLS握手-&gt;发送HTTP请求-&gt;服务端返回响应-&gt;解析和渲染页面<br>
+但是这些步骤不是每次都完整走，连接可以复用，DNS和资源可以缓存，HTTP3使用QUIC建立连接不再TCP三次握手。</p>
+<p>网页很慢，定位问题：<br>
+可以打开浏览器的开发者工具的Network，看请求的Timing<br>
+DNS慢：检查服务器，缓存和网络情况，看解析IP是否正确。<br>
+TCP和TLS握手慢：检查往返时延，丢包，代理，防火墙和证书相关问题，必要时抓包看SYN、重构穿和TLS消息。<br>
+等待TTFB很长：浏览器等待服务器响应首字节的时间指标。<br>
+内容下载慢：看资源大小，带宽和重传情况。<br>
+请求结束但是页面很卡：可能浏览器因为长任务，脚本执行等开销。</p>
+<p>服务端正常启动了，但是客户端请求不到有哪些原因?如何排查?<br>
+第一步：检查服务器到底监听了那个地址和端口<br>
+第二步：检查DNS和路由<br>
+第三步：检查TCP端口能否连接<br>
+第四步：检查服务器防火墙<br>
+发送给真实curl请求，乳沟收到HTTP请求，根据状态码和日志排查，两端同时抓包看服务器是否收到并回复，HTTP请求和响应到达了那一步，把问题进一步缩小。</p>
+<p>会出现ping不通但是http能请求成功吗：<br>
+会出现，ping是由ICMP Echo，而http1/2使用tcp。服务器或网络设备可能禁止、限速ICMP，但是允许TCP的80、443端口，所以HTTP可以访问，HTTP3使用QUIC/UDP，同样不依赖ping成功。<br>
+而且，域名解析出来多个地址，ping和浏览器访问的不一定是同一个地址，浏览器还可能通过代理访问，所以排查时要确认实际目标和路径。<br>
+反过来，ping只能说明ICMP探测有回应，不代表业务端口有监听，更不能代表接口正常返回。</p>
+<p>网络攻击<br>
+DDOS攻击如何防范：<br>
+分布式拒绝服务（DDos）攻击是通过大规模互联网流量淹没目标服务器或其周边基础设施，以破坏目标服务器、服务或网络正常流量的恶意行为。<br>
+网络层攻击：比较典型的攻击类型是UDP反射攻击<br>
+传输层攻击：比如SYN Flood攻击<br>
+会话层攻击：SSL连接攻击，占用服务器SSL会话资源</p>
+<p>措施：增强网络基础设施：提升网络带宽，增加服务器的处理能力和负载能力<br>
+使用防火墙和入侵检测系统：配置防火墙规则，限制不必要流量，阻止来自可疑IP地址流量。<br>
+流量清洗和均衡负载：使用专业DDos防护服务提供商，通过流量清洗技术过滤恶意流量后转发给目标服务器，使用负载均衡将流量均匀分配到多台服务器。</p>
+<p>SQL就是把用户输入当成SQL语法的一部分执行了<br>
+防范重点：核心是让不可信输入不能改变查询结构。<br>
+参数化查询，把SQL结构和参数值分开处理，让用户输入只作为数据，而不是SQL语法。<br>
+动态结构使用白名单：表名、列名、排序方向等不能直接作为普通参数绑定，需要映射到业务允许固定选项。<br>
+最小权限：应用数据库账号只授予需要的权限，降低漏洞出现影响。<br>
+输入校验：检查类型、长度和业务范围。</p>
+<p>CSRF攻击是跨站请求伪造，核心利用浏览器会自动携带身份凭证，让服务端把攻击者诱导的请求当成用户自己的操作。<br>
+解决方法：CSRF Token，服务端生成难以猜测的令牌，发给服务器验证。<br>
+检验来源，根据业务校验Origin。浏览器限制跨转请求携带Cookie。</p>
+<p>XSS攻击是跨站脚本攻击，攻击者在Web页面插入恶意脚本代码。<br>
+反射型XSS：恶意代码请求过来直接执行，比如发送一段JS代码就运行了。<br>
+存储型XSS：恶意代码存储到数据库，比如有一个留言板攻击者提交恶意留言。<br>
+DOM型XSS：问题出在浏览器自己的JS，通过修改原始的客户端代码，受害者浏览器的DOM环境改变，导致有效载荷的执行。</p>
+<p>防御：输入验证，检验数据类型，长度和业务范围。输出编码，普通文本尽量textContent插入。设置CSP策略限制网页中可执行脚本源。使用HttpOnly，避免脚本直接读取隐私信息（比如Cookie）。</p>
+<p>DNS劫持：通过篡改hosts，路由器DNS配置，把正常域名指向错误地址。<br>
+防范可以检查本地hosts和DNS配置。但是接受到错误ip，也不一定伪造正确HTTPS身份。正常证书验证也能识别到错误。</p>
+<p>测试网络连通性</p>
+<pre><code class="language-Powershell"># 1. 看本机IP、子网掩码
+ipconfig /all
+# 2. 看路由表
+route print -4
+# 3. 测试ICMP
+ping 192.168.0.2
+# 4. 看ARP缓存
+arp -a
+# 5. 测试TCP端口
+Test-NetConnection 192.168.0.2 -Port 502 -InformationLevel Detailed
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/uip-dai-ma-yue-du-xin-de/">
+              <h3 class="post-title">
+                UIP代码阅读心得
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

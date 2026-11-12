@@ -1,0 +1,180 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>gdb学习 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="gdb学习 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="启动时不显示信息  gdb -q
+显示源码调试  sudo gdb -tui ./uip，进入GDB后start，layout split能显示源码 汇编 命令窗口
+frame            # 显示当前函数、文件、行号
+focus..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              gdb学习
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-11-12
+              </span>
+              <span>
+                1 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>启动时不显示信息  <code>gdb -q</code><br>
+显示源码调试  <code>sudo gdb -tui ./uip</code>，进入GDB后<code>start，layout split</code>能显示源码 汇编 命令窗口<br>
+<code>frame</code>            # 显示当前函数、文件、行号</p>
+<p><code>focus cmd</code>    # 焦点切到命令窗口，上下箭头翻历史命令<br>
+<code>focus src</code>     # 焦点切到源码窗口，上下箭头滚动源码<br>
+<code>focus asm</code>     # 焦点切到汇编窗口，上下箭头滚动汇编</p>
+<p><code>p/d $esi</code>       # 看即将打印的整数<br>
+<code>sx/s $rdi</code>       # 看格式字符串</p>
+<p><code>tbreak demo.c:8</code>是一次性断点，打完即删除<br>
+<code>until</code> <code>finish</code>用来跳出循环和当前函数</p>
+<p><code>return</code>  可以在函数里面强行返回一个值</p>
+<p><code>p a.src = 100</code>可以设置一个变量</p>
+<p><code>call  func()</code>直接能执行一个function</p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/ji-suan-ji-wang-luo-mian-shi-ti/">
+              <h3 class="post-title">
+                计算机网络面试题
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,277 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>面试问题准备 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="面试问题准备 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="系统调用切换到内核后，MMU 怎么用页表寻址并把数据写回用户空间？
+1、页表不切换：Linux 进程的页表同时映射了低地址的用户空间和高地址的内核空间。系统调用通过 syscall 触发 CPU 特权级提升（Ring 3 \to Ring ..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              面试问题准备
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-10-19
+              </span>
+              <span>
+                14 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h3 id="系统调用切换到内核后mmu-怎么用页表寻址并把数据写回用户空间">系统调用切换到内核后，MMU 怎么用页表寻址并把数据写回用户空间？</h3>
+<pre><code class="language-c">1、页表不切换：Linux 进程的页表同时映射了低地址的用户空间和高地址的内核空间。系统调用通过 syscall 触发 CPU 特权级提升（Ring 3 \to Ring 0），并不切换 CR3 寄存器。
+2、同一页表寻址：由于在同一张页表下，内核代码可以合法访问属于当前进程的全部用户态虚拟地址空间。内核通过 copy_to_user() 将数据写入用户指针对应的虚拟地址，MMU 正常利用当前页表将其转换为对应的物理页。
+3、安全边界保障：内核写入前会通过 access_ok() 校验用户指针范围，并通过缺页异常表（Fixup table）捕获非法指针，防止因用户空间错误破坏内核自身稳定性。
+</code></pre>
+<h3 id="硬中断上半部不能睡眠或阻塞主要由三个底层机制决定">硬中断上半部不能睡眠或阻塞，主要由三个底层机制决定</h3>
+<p><em><strong>无进程实体和不可调度：</strong></em> 中断上下文没有专属进程描述符（task_struct），不能作为调度实体被休眠挂起并重新唤醒，调用schedule()会引起内核Panic。<br>
+<em><strong>不可重入与死锁：</strong></em> 若中断上下文等待被其打断的进程所持有的互斥锁，被打断进程由于中断未结束无法获得 CPU 释放锁，将导致系统永久死锁；<br>
+<em><strong>实时性与关中断影响：</strong></em> 硬中断上半部处于关中断或屏蔽同优先级中断状态，执行睡眠或长延时会使 CPU 无法响应外部事件与时钟节拍，破坏系统的响应性。因此涉及休眠与复杂业务的操作必须下放到中断下半部（底半部 / 软中断 / 工作队列 / 任务通知）中异步处理。”</p>
+<p>压力面试</p>
+<h3 id="你为什么想进入军队为什么进网络部队">你为什么想进入军队，为什么进网络部队？</h3>
+<p>我想加入军队并选择网络部队，是性格、职业信仰和技术方向的三重契合。<br>
+首先，我个人的做事风格非常追求严谨和自律，习惯于钻研硬核的底层技术，军队纯粹且高度纪律化的环境非常吸引我，能让我避开商业浮躁，专注解决核心问题。<br>
+其次，网络空间已经是现代国防的最前沿。我长期深耕系统底层架构、Linux内核机制、汇编指令以及TCP/IP网络通信。我知道在真正的网络攻防对抗中，停留在应用层是不够的，必须深入到操作系统底层和硬件寄存器级别。我的技术栈和研究习惯，正是网络安全和底层防御最需要的。<br>
+我希望把我对底层技术的掌握，用在保卫国家网络安全这条战线上。比起在互联网公司优化业务代码，能成为国家网络防线的一部分，是我作为工科生能想到的最高职业荣誉。</p>
+<h3 id="你是电子科大搞底层内核-搞光刻机算法的硕士如果把你分到极其偏远的基层连队每天就是拉线-修电脑-甚至喂猪种菜你是不是觉得大材小用你会不会后悔">你是电子科大搞底层内核、搞光刻机算法的硕士，如果把你分到极其偏远的基层连队，每天就是拉线、修电脑、甚至喂猪种菜，你是不是觉得大材小用？你会不会后悔？</h3>
+<p>说一点落差都没有是不真实的，但既然选择了穿上军装，我就清楚军队是一个讲究齿轮咬合的庞大机器，基层是一切战斗力的根基。如果分配我去修电脑，我会把它当成了解部队信息化基础设施运转现状的窗口；在完成好基层任务、不折不扣执行命令的同时，我会利用业余时间保持技术敏锐度。只要组织有一天需要我的系统架构能力，我能随时顶上。先做一颗合格的螺丝钉，再去做一个优秀的工程师。</p>
+<h3 id="如果你发现你的直属领导在某项技术方案上做出了明显错误的决定继续执行可能会导致网络安全隐患你会怎么做但他态度很强硬让你必须执行">如果你发现你的直属领导在某项技术方案上做出了明显错误的决定，继续执行可能会导致网络安全隐患，你会怎么做？但他态度很强硬，让你必须执行。</h3>
+<p>“在军队，服从命令是军人的天职，这一点不可动摇。面对这种情况，我会分三步走：第一，先稳定情绪，绝不在公开场合顶撞领导，维护指挥威信；第二，我会利用我的专业背景，快速梳理出一份详尽的技术评估报告，用客观的数据（比如网络抓包数据或底层逻辑分析）私下向领导汇报潜在的安全隐患，并提供一个备选的优化方案；第三，如果领导出于我不知道的全局考量（比如战术欺骗或时间极度紧迫），坚持原方案，那我会在做好安全备份和应急预案的前提下，坚决执行命令。</p>
+<h3 id="看了你的简历你一直都在做研发和技术我觉得你性格太内向沉闷了根本不适合我们部队这种需要极强协同和管理能力的地方你觉得呢">看了你的简历，你一直都在做研发和技术，我觉得你性格太内向沉闷了，根本不适合我们部队这种需要极强协同和管理能力的地方，你觉得呢？</h3>
+<p>考官您好，我非常理解您的顾虑。长期与 Linux 内核、汇编代码打交道，确实让我习惯了安静和沉思。但我认为，这并不意味着我缺乏协同能力。正因为我习惯了深挖底层、梳理复杂的逻辑链条，在团队协作中，我往往是那个能冷静拆解任务、排查最隐蔽 Bug 的人。网络部队不仅需要能冲锋陷阵的指挥员，也极度需要能坐得住冷板凳、耐得住寂寞、在代码级与敌人死磕的技术堡垒。我的‘沉闷’，其实是对复杂问题的专注。</p>
+<h3 id="如果你刚到单位老同志或者领导分配给你的计算机维护编程任务非常繁重且标准很高-时间很紧你该怎么办">如果你刚到单位，老同志或者领导分配给你的计算机维护/编程任务非常繁重，且标准很高、时间很紧，你该怎么办？</h3>
+<p>遇到这种情况，我会把它看作是组织对新人的信任和考验，也是我快速熟悉单位业务、证明自己技术能力的绝佳机会。我会在“坚决服从命令”的前提下，用工程化的思维来拆解和推进任务。具体我会分四步走：<br>
+第一步：端正态度，精准确认需求边界<br>
+确认边界：第一时间接下任务，并明确“核心标准”和“绝对死节点”，避免偏差与返工。<br>
+模块拆解：发挥我底层开发的习惯，区分主次，优先保障核心系统和紧急任务按时交付。<br>
+节点汇报：遇到难点绝不死扛，在关键节点“带方案”汇报进度；同时向老同志请教现有工具链，避免闭门造车。<br>
+复盘沉淀：发扬死磕技术的韧性坚决拿下任务。事后我会编写自动化脚本或标准手册（SOP），把突击战变成常规武器，为团队沉淀技术资产。</p>
+<h3 id="在某次重要的军事演训或业务保障任务中你负责的某套计算机系统突然崩溃现场情况紧急领导正盯着你你会按什么步骤去处理和应对">在某次重要的军事演训或业务保障任务中，你负责的某套计算机系统突然崩溃，现场情况紧急，领导正盯着你，你会按什么步骤去处理和应对？</h3>
+<p>第一步：稳住阵脚，简明汇报<br>
+绝不在领导的注视下表现出慌乱。第一时间做一句话报告，给出预期，稳定军心：“报告首长，系统发生突发崩溃，我正立即启动应急预案，预计X分钟内切入备用状态！”<br>
+第二步：先通后局，启动备用（最关键）<br>
+演训现场绝对不是“单步调试代码”或“看系统日志”的时候。我会立刻放弃对崩溃原因的深挖，直接启用备用服务器、切换冗余网络链路，<br>
+第三步：物理隔离，快速定界<br>
+在备用系统接管任务后，迅速将崩溃的系统从主网中隔离，防止故障（如网络风暴、病毒或硬件短路）蔓延。<br>
+第四步：事后死磕，深度复盘<br>
+演训任务圆满结束后，我再发挥自己习惯深挖底层技术的专长，把系统的内核日志（dmesg）、崩溃快照（Core Dump）提取出来。像平时做驱动调试一样，彻底查清是内存越界、死锁还是外部电磁干扰，并连夜写出详尽的故障溯源与防范报告，确保同类问题绝不发生第二次。</p>
+<p>Ping 的原理：</p>
+<p>Ping 并不是一个独立的端口程序，它工作在网络层，基于 ICMP（互联网控制消息协议）。<br>
+工作过程：源主机向目标主机发送一个 ICMP Echo Request（回显请求） 报文。目标主机收到后，如果在网络层正常，会返回一个 ICMP Echo Reply（回显应答） 报文。<br>
+Ping 程序通过计算发送和接收报文之间的时间差（RTT），以及统计丢失的报文数量，来判断网络连通性和延迟。它还会利用 IP 头部的 TTL（生存时间）字段，每经过一个路由器 TTL 减 1，如果 TTL 归零还未到达，路由器会丢弃并返回超时 ICMP 报文（这也是 traceroute 的原理）。<br>
+<em><strong>CMP常用差错报文例子</strong></em>：<br>
+1、网络不可达代码为0<br>
+IP地址是分网络号和主机号的，所以当路由器中路由表匹配不到接收方IP网络号，就通过ICMP协议以网络不可达原因告知主机。但自从没有网络分类后，网络不可达也渐渐不使用了。<br>
+2、主机不可达代码为1<br>
+路由表中没有该主机信息，或者该主机没有连接到网络，那么ICMP协议以主机不可达原因告知主机。<br>
+3、协议不可达为2<br>
+主机用TCP协议访问对端，能找到对端主机，可是对端主机防火前禁止TCP协议访问，会通过ICMP以协议不可达告知主机。<br>
+4、端口不可达为3<br>
+主机访问8080端口，可以找到对端主机，防火墙也没有限制，但是对端主机没有监听8080端口，故通过ICMP以端口不可达告知主机。<br>
+5、需进行分片但是不分片位代码为4<br>
+就是主机发送IP数据包设置了禁止分片，结果路途中一个路由器MTU大小不够，他不能分片只能抛弃。这时候这个路由器返回一个这个原点抑制消息。<br>
+6、重定向消息<br>
+路由器发现发送端主机使用不是最优路径，回复消息包含最合适路由信息和源数据。<br>
+7、超时信息<br>
+每次经过一个路由器，TTL就会减少1，如果路途中TTL为0，路由器会返回这个信息。这个可以防止路由控制遇到问题IP包无休止转发。<br>
+当目标IP是外网IP，会从真网卡发出，当目标IP是回环地址，就使用本地网卡。<br>
+本地网卡是一个假网卡，他会把数据推到一个<code>input_pkt_queue </code>，这个数据全网卡共享的，消息发送到这个列表，触发软中断唤醒内核线程<code>ksoftirqd</code>，他受到中断会去链表把消息去除，然后传递给上层。ping回环地址和ping本机地址没有区别。</p>
+<p>DNS 的原理：<br>
+DNS（Domain Name System，域名系统）工作在应用层，主要使用 UDP 53 端口，作用是将人类易读的域名（如 www.baidu.com）解析为机器通讯所需的 IP 地址。<br>
+解析过程（递归与迭代结合）：<br>
+本地查询：浏览器先查本地缓存和操作系统 hosts 文件。<br>
+递归查询：如果没有，向配置的本地 DNS 服务器（如运营商 DNS 或 8.8.8.8）发起递归查询。<br>
+迭代查询：本地 DNS 服务器如果也没有缓存，会进行迭代查询：先问根域名服务器（Root），根告诉它去问 顶级域名服务器（TLD，如 .com）；顶级域名服务器再告诉它去问 权威域名服务器（Authoritative）。最终权威服务器返回目标 IP 给本地 DNS。<br>
+本地 DNS 将结果缓存，并返回给用户的设备。</p>
+<p>自我介绍 (25分): 包含入伍动机 (5分)、思维逻辑 (5分)、语言表达 (5分)、心理素质 (5分)、形象气质 (5分)。</p>
+<p>考核要求：①面试对象重点介绍个人基本情况、兴趣爱好、入伍动机、优缺点等内容，时间不超过5分钟；②按入伍动机、思维逻辑、语言表达、心理素质、形象气质5个分项进行评分，每项分值不超过5分。</p>
+<p>专业水平 (75分):</p>
+<p>考核要求：①系统掌握本专业及相关专业知识，并对本专业有深入研究，回答问题正确，概念清晰计 30-35 分；②比较全面掌握本专业知识，并在某一方面有一定研究，回答问题表述准确，结论正确计 25-30 分；③熟悉本专业知识，回答问题基本正确计 20-25 分；④不熟悉本专业知识，根据回答情况酌情打分。</p>
+<pre><code class="language-text">1. 军队院校自命题与期末复习题（命题重合度极高）
+出题专家库主要来自国防科技大学、信息工程大学等军队院校的专业教研室。搜索他们的考研专业课或本科期末复习题，本质就是原题库的近亲：
+
+国防科技大学 821 计算机专业基础 题库 / 真题（覆盖数据结构、计组、操作系统、计网）
+战略支援部队信息工程大学 / 国防科技大学 网络空间安全 期末复习题 / 题库
+信息与通信工程 800+ 专业课 简答题 题库
+
+2. 国家标准技术资格认证（软考高项与中级）
+标准化抽题最喜欢直接引用国家考试的标准化客观问答：
+软考网络规划设计师 案例分析 简答题背诵
+软考信息安全工程师 核心考点 简答汇总 pdf
+系统分析师 / 系统架构设计师 网络与安全模块 问答题库
+
+3. 军队文职（软件工程 / 网络工程 / 密码学 / 通信）考题
+军队文职虽然是笔试，但其“专业科目”的题库大纲与直招选拔的题库标准基本一致：
+军队文职 专业科目 计算机 / 电子信息 题库 简答题
+军队文职 通信工程 / 密码技术 大纲 知识点背诵清单
+</code></pre>
+<p>满分一般分：基础概念 40%、原理机制 40%、扩展/工程应用 20%）<br>
+直接定性与标准定义（1 句话，直接亮底牌）<br>
+例：“XX 是一种用于解决 XX 问题的协议/机制，其核心目标是平衡 XX 与 XX。”<br>
+底层原理与执行流程（2~3 点，体现软硬件或协议栈深度）<br>
+例：“从底层看，它主要包含三个阶段/状态：第一步……，第二步……，在硬件/内核层面涉及到……寄存器/数据结构的变更。”<br>
+优缺点、边界条件或在防御/对抗中的实际场景（体现部队工程思维）<br>
+例：“该机制的优势在于开销低、吞吐高，但在强对抗/高噪声环境下可能存在 XX 漏洞/瓶颈，因此工程实践中通常需要配合 XX 机制共同使用。”</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li>
+<ul>
+<li><a href="#%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8%E5%88%87%E6%8D%A2%E5%88%B0%E5%86%85%E6%A0%B8%E5%90%8Emmu-%E6%80%8E%E4%B9%88%E7%94%A8%E9%A1%B5%E8%A1%A8%E5%AF%BB%E5%9D%80%E5%B9%B6%E6%8A%8A%E6%95%B0%E6%8D%AE%E5%86%99%E5%9B%9E%E7%94%A8%E6%88%B7%E7%A9%BA%E9%97%B4">系统调用切换到内核后，MMU 怎么用页表寻址并把数据写回用户空间？</a></li>
+<li><a href="#%E7%A1%AC%E4%B8%AD%E6%96%AD%E4%B8%8A%E5%8D%8A%E9%83%A8%E4%B8%8D%E8%83%BD%E7%9D%A1%E7%9C%A0%E6%88%96%E9%98%BB%E5%A1%9E%E4%B8%BB%E8%A6%81%E7%94%B1%E4%B8%89%E4%B8%AA%E5%BA%95%E5%B1%82%E6%9C%BA%E5%88%B6%E5%86%B3%E5%AE%9A">硬中断上半部不能睡眠或阻塞，主要由三个底层机制决定</a></li>
+<li><a href="#%E4%BD%A0%E4%B8%BA%E4%BB%80%E4%B9%88%E6%83%B3%E8%BF%9B%E5%85%A5%E5%86%9B%E9%98%9F%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%9B%E7%BD%91%E7%BB%9C%E9%83%A8%E9%98%9F">你为什么想进入军队，为什么进网络部队？</a></li>
+<li><a href="#%E4%BD%A0%E6%98%AF%E7%94%B5%E5%AD%90%E7%A7%91%E5%A4%A7%E6%90%9E%E5%BA%95%E5%B1%82%E5%86%85%E6%A0%B8-%E6%90%9E%E5%85%89%E5%88%BB%E6%9C%BA%E7%AE%97%E6%B3%95%E7%9A%84%E7%A1%95%E5%A3%AB%E5%A6%82%E6%9E%9C%E6%8A%8A%E4%BD%A0%E5%88%86%E5%88%B0%E6%9E%81%E5%85%B6%E5%81%8F%E8%BF%9C%E7%9A%84%E5%9F%BA%E5%B1%82%E8%BF%9E%E9%98%9F%E6%AF%8F%E5%A4%A9%E5%B0%B1%E6%98%AF%E6%8B%89%E7%BA%BF-%E4%BF%AE%E7%94%B5%E8%84%91-%E7%94%9A%E8%87%B3%E5%96%82%E7%8C%AA%E7%A7%8D%E8%8F%9C%E4%BD%A0%E6%98%AF%E4%B8%8D%E6%98%AF%E8%A7%89%E5%BE%97%E5%A4%A7%E6%9D%90%E5%B0%8F%E7%94%A8%E4%BD%A0%E4%BC%9A%E4%B8%8D%E4%BC%9A%E5%90%8E%E6%82%94">你是电子科大搞底层内核、搞光刻机算法的硕士，如果把你分到极其偏远的基层连队，每天就是拉线、修电脑、甚至喂猪种菜，你是不是觉得大材小用？你会不会后悔？</a></li>
+<li><a href="#%E5%A6%82%E6%9E%9C%E4%BD%A0%E5%8F%91%E7%8E%B0%E4%BD%A0%E7%9A%84%E7%9B%B4%E5%B1%9E%E9%A2%86%E5%AF%BC%E5%9C%A8%E6%9F%90%E9%A1%B9%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88%E4%B8%8A%E5%81%9A%E5%87%BA%E4%BA%86%E6%98%8E%E6%98%BE%E9%94%99%E8%AF%AF%E7%9A%84%E5%86%B3%E5%AE%9A%E7%BB%A7%E7%BB%AD%E6%89%A7%E8%A1%8C%E5%8F%AF%E8%83%BD%E4%BC%9A%E5%AF%BC%E8%87%B4%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8%E9%9A%90%E6%82%A3%E4%BD%A0%E4%BC%9A%E6%80%8E%E4%B9%88%E5%81%9A%E4%BD%86%E4%BB%96%E6%80%81%E5%BA%A6%E5%BE%88%E5%BC%BA%E7%A1%AC%E8%AE%A9%E4%BD%A0%E5%BF%85%E9%A1%BB%E6%89%A7%E8%A1%8C">如果你发现你的直属领导在某项技术方案上做出了明显错误的决定，继续执行可能会导致网络安全隐患，你会怎么做？但他态度很强硬，让你必须执行。</a></li>
+<li><a href="#%E7%9C%8B%E4%BA%86%E4%BD%A0%E7%9A%84%E7%AE%80%E5%8E%86%E4%BD%A0%E4%B8%80%E7%9B%B4%E9%83%BD%E5%9C%A8%E5%81%9A%E7%A0%94%E5%8F%91%E5%92%8C%E6%8A%80%E6%9C%AF%E6%88%91%E8%A7%89%E5%BE%97%E4%BD%A0%E6%80%A7%E6%A0%BC%E5%A4%AA%E5%86%85%E5%90%91%E6%B2%89%E9%97%B7%E4%BA%86%E6%A0%B9%E6%9C%AC%E4%B8%8D%E9%80%82%E5%90%88%E6%88%91%E4%BB%AC%E9%83%A8%E9%98%9F%E8%BF%99%E7%A7%8D%E9%9C%80%E8%A6%81%E6%9E%81%E5%BC%BA%E5%8D%8F%E5%90%8C%E5%92%8C%E7%AE%A1%E7%90%86%E8%83%BD%E5%8A%9B%E7%9A%84%E5%9C%B0%E6%96%B9%E4%BD%A0%E8%A7%89%E5%BE%97%E5%91%A2">看了你的简历，你一直都在做研发和技术，我觉得你性格太内向沉闷了，根本不适合我们部队这种需要极强协同和管理能力的地方，你觉得呢？</a></li>
+<li><a href="#%E5%A6%82%E6%9E%9C%E4%BD%A0%E5%88%9A%E5%88%B0%E5%8D%95%E4%BD%8D%E8%80%81%E5%90%8C%E5%BF%97%E6%88%96%E8%80%85%E9%A2%86%E5%AF%BC%E5%88%86%E9%85%8D%E7%BB%99%E4%BD%A0%E7%9A%84%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BB%B4%E6%8A%A4%E7%BC%96%E7%A8%8B%E4%BB%BB%E5%8A%A1%E9%9D%9E%E5%B8%B8%E7%B9%81%E9%87%8D%E4%B8%94%E6%A0%87%E5%87%86%E5%BE%88%E9%AB%98-%E6%97%B6%E9%97%B4%E5%BE%88%E7%B4%A7%E4%BD%A0%E8%AF%A5%E6%80%8E%E4%B9%88%E5%8A%9E">如果你刚到单位，老同志或者领导分配给你的计算机维护/编程任务非常繁重，且标准很高、时间很紧，你该怎么办？</a></li>
+<li><a href="#%E5%9C%A8%E6%9F%90%E6%AC%A1%E9%87%8D%E8%A6%81%E7%9A%84%E5%86%9B%E4%BA%8B%E6%BC%94%E8%AE%AD%E6%88%96%E4%B8%9A%E5%8A%A1%E4%BF%9D%E9%9A%9C%E4%BB%BB%E5%8A%A1%E4%B8%AD%E4%BD%A0%E8%B4%9F%E8%B4%A3%E7%9A%84%E6%9F%90%E5%A5%97%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E7%AA%81%E7%84%B6%E5%B4%A9%E6%BA%83%E7%8E%B0%E5%9C%BA%E6%83%85%E5%86%B5%E7%B4%A7%E6%80%A5%E9%A2%86%E5%AF%BC%E6%AD%A3%E7%9B%AF%E7%9D%80%E4%BD%A0%E4%BD%A0%E4%BC%9A%E6%8C%89%E4%BB%80%E4%B9%88%E6%AD%A5%E9%AA%A4%E5%8E%BB%E5%A4%84%E7%90%86%E5%92%8C%E5%BA%94%E5%AF%B9">在某次重要的军事演训或业务保障任务中，你负责的某套计算机系统突然崩溃，现场情况紧急，领导正盯着你，你会按什么步骤去处理和应对？</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/ji-suan-ji-wang-luo/">
+              <h3 class="post-title">
+                计算机网络
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

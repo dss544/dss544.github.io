@@ -1,0 +1,366 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>代码大全 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="代码大全 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="这个博客说了每一章是做什么的
+https://alfred-sun.github.io/tuliangblog/code-complete-second-edition/
+5 6-7 8 10-13 18
+15 16 25 26 9 23 ..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              代码大全
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-08-24
+              </span>
+              <span>
+                7 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>这个博客说了每一章是做什么的<br>
+https://alfred-sun.github.io/tuliangblog/code-complete-second-edition/<br>
+5 6-7 8 10-13 18<br>
+15 16 25 26 9 23 24</p>
+<p>###5<br>
+连续整数池中极速找回最小空闲编号 可以用位图，也可以用一个栈保存释放编号，如果栈控cnt才++。</p>
+<p>###6<br>
+相同对象才能继承，比如苹果是水果。不相同只能包含，不如员工花名册包含一个链表（链表遍历名字），你不能这个类直接继承他。</p>
+<p>让接口尽量可编程，比如你有一个函数是init，然后后面是对这个变量操作，有些人可能没有执行init直接操作可能报错，这时候你就把init返回一个对象指针。</p>
+<p>里氏替换原则,子类继承父类父类函数,程序员上层调用父类对象执行这个父类函数不用管是那个子类,父类函数都是一样的含义.</p>
+<p>如果共享数据而不是行为,那就不要继承,单独弄子类.比如一个步进电机驱动器和温控传感器都有</p>
+<p>命名空间只是带一个标签的收纳箱,纯粹在编译期给一堆杂乱的全局函数和变量贴上分类标签,本身不会占用任何空间.</p>
+<p>###7<br>
+在子程序中，不要把输入参数当作工作变量，不然调试不知道怎么修改值的。</p>
+<p>###8<br>
+变量别一进函数就全部堆在最顶上声明，而要“随用随声明、就近初始化”，并且要在工程防御层面杜绝未初始化造成的内存幽灵 Bug。<br>
+尽量让变量能满足功能最小权限，比如能局部就不要全局。</p>
+<p>###10<br>
+每个变量仅有一项用途<br>
+变量含义清晰没有隐含含义<br>
+所有声明变量均要使用且作用域要足够小<br>
+变量名中的计算值限定词一般放在变量最后，比如customercount<br>
+只有极短，不向外传递的循环变量，才会使用i，j。如果循环完还要使用这个变量，那就必须起有意义的名字。如果出现两层或多层循环嵌套，就不用i，j，k，容易写错应为i，j长得像。<br>
+下次定义临时变量不要一直用temp，说明根本没思考这个临时值的意义，尽量写真实名字。<br>
+可以去阅读下drivers/char/misc.c 与 drivers/char/random.c 内核的代码<br>
+使用bool变量不要在名字出现notfound这种带否定语义的，否则要产生双重否定。<br>
+枚举变量要加上组前缀，比如有两个一个enum Color 一个 enum TrafficLight，加上Color_Red，<br>
+TrafficLight_Red.</p>
+<p>变量名和类型冲突，最好的方法就是把变量具体含义写上去，比如Button submitBtn。</p>
+<p>c++程序命名示例：</p>
+<pre><code class="language-c++">// 1. 常量全大写
+const int BUFFER_CAPACITY = 128;
+
+// 2. 枚举类型名用复数[cite: 22]，元素用“单数前缀_名称”防止污染命名空间[cite: 22]
+enum TransmitModes {
+    TransmitMode_Polling,
+    TransmitMode_Interrupt,
+    TransmitMode_Dma
+};
+// 局部变量，首字母可以大写
+int LocalVariable;
+// 私有变量 不用s怕和结构体混乱
+int f_FileData;
+// 3. 全局变量加 g_[cite: 22]
+uint32_t g_GlobalPacketLoss = 0;
+
+// 4. 类名首字母大写[cite: 22]
+class SpiController {
+public:
+    // 5. 子程序名首字母大写[cite: 22]，入参使用小驼峰[cite: 22]
+    int TransmitPayload(const uint8_t *dataBuffer, int dataLength) {
+        // 6. 局部变量使用小驼峰[cite: 22]
+        int bytesSent = 0;
+        
+        // 7. 类私有成员带 m_ 前缀，阅读时一眼区分成员变量和局部变量[cite: 22]
+        if (m_isConfigured) {
+            bytesSent = dataLength;
+        }
+        return bytesSent;
+    }
+
+private:
+    // 类成员变量加 m_[cite: 22]
+    bool m_isConfigured;
+    int  m_chipSelectPin;
+};
+</code></pre>
+<p>c语言变量命名规范</p>
+<pre><code class="language-c">// 1. 文件私有常量
+#define LOCAL_FIFO_SIZE 64
+// 模块私有
+static const int FIFO_DEPTH = 16;
+// 2. 导出给其他模块使用的全局变量：G_ + 模块名 + 变量名
+volatile uint32_t G_UART_RxInterruptCount = 0;
+
+// 3. 文件私有变量（static）：加 f_ 前缀，绝不向外暴露[cite: 23]
+static int f_hardwareErrorState = 0;
+
+// 4. 文件私有辅助函数（static）：加 f_ 前缀[cite: 23]
+static void f_ClearRxHardwareFifo(void) {
+    // 局部变量大写开头[cite: 23]
+    int ReadIndex = 0;
+    (void)ReadIndex;
+}
+
+// 5. 跨模块公开调用的公用函数：大写开头[cite: 23]
+int UartDriver_Init(uint32_t BaudRate) {
+    f_ClearRxHardwareFifo();
+    f_hardwareErrorState = 0;
+    return 0;
+}
+</code></pre>
+<p>如果一个文件用了cnt，那就都用这个，不要在添加num引起歧义。让“长相相似”的变量具有“相同的含义”，让“含义不同”的变量具有“截然不同的长相和读音”。</p>
+<p>枚举类型结构体可以这样用，他的变量如果不赋值就是默认上一个值+1，虽然以前学过</p>
+<pre><code class="language-c">typedef enum{
+	Color_Invalid = 0,
+	Color_First = 0,
+	Color_Red = 0,
+	Color_Green,
+	Color_Blue,
+	Color_Size,
+
+}Color;
+Color ccc;
+int main()
+{
+	char str[] = &quot;Hello World&quot;;
+	for (ccc = Color_First; ccc &lt; Color_Size; ccc++)
+	{
+		printf(&quot; %d&quot;, ccc);
+	}
+</code></pre>
+<p>可以巧用typedef，比如定义一个长度为30子数组，<code>typedef char EmployeeName[30]</code>;</p>
+<p>当查询的输入不是连续规整的整数索引，可以构造键值来实现查表。<br>
+1、暴力输入，直接填表，但是太浪费空间。<br>
+2、自己定义一个获得索引函数，比如小于18岁全映射18岁，然后后面就是实际age-17，然后大于66岁就是66.<br>
+3、二分查找，自己定义区间。</p>
+<p>内嵌空闲链表，可以固定链表内存，然后使用下一个。</p>
+<pre><code class="language-c">typedef union Slot {
+    // 槽位在使用中：存储真实业务数据
+    struct {
+        char name[32];
+        float price;
+    } data;
+    // 槽位已释放：这块内存被复用为链表指针，指向下一个空闲槽位下标！
+    int next_free;
+} Slot;
+static Slot g_pool[MAX_SLOTS];
+static int  g_free_head = 0; // 空闲链表头节点
+// 初始化：将所有槽位串成单向链表 (0 -&gt; 1 -&gt; 2 -&gt; ... -&gt; -1)
+void pool_init() {
+    for (int i = 0; i &lt; MAX_SLOTS - 1; i++) {
+        g_pool[i].next_free = i + 1;
+    }
+    g_pool[MAX_SLOTS - 1].next_free = -1;
+}
+// 分配：O(1) 立即弹出最前面的空闲槽位
+int slot_alloc() {
+    if (g_free_head == -1) return -1; // 满了
+    int allocated = g_free_head;
+    g_free_head = g_pool[allocated].next_free;
+    return allocated;
+}
+// 释放：O(1) 将释放的槽位头插回空闲链表
+void slot_free(int idx) {
+    g_pool[idx].next_free = g_free_head;
+    g_free_head = idx; // 下次分配优先复用这个刚释放的槽位！
+}
+</code></pre>
+<h3 id="16">16</h3>
+<p>多层循环就不要用i j k，容易写错，要包含实际意义。</p>
+<h3 id="25">25</h3>
+<p>优化代码流程。</p>
+<pre><code class="language-c">[1. 优先写出清晰、高质量的代码] (保证正确性)
+                 │
+                 ▼
+[2. 系统整体完成后，如果性能确实达不到指标]
+                 │
+        ┌────────┴───────────────────────────────────────────────────────┐
+        ▼                                                                ▼
+   a. Git/备份保存当前能跑的版本                                       b. 用 Profiler 测出真正的瓶颈热点
+        │                                                                │
+        └───────────────────────────────┬────────────────────────────────┘
+                                        ▼
+                  c. 分析瓶颈来源：是架构设计/算法问题？
+                     ├─────► [是] ──► 跳回第 1 步重构架构/换算法（不要抠代码！）
+                     └─────► [否] ──► 进入微调局部代码
+                                        │
+                                        ▼
+                                d. 对热点代码做局部微调
+                                        │
+                                        ▼
+                                e. 立即重新测量对比性能
+                                        │
+                     ┌──────────────────┴──────────────────┐
+                     ▼                                     ▼
+                [性能确实提升]                        [性能无改善或恶化]
+                     │                                     │
+                     ▼                                     ▼
+               保存为新基线                         f. 立即回滚代码到 a 状态！
+                     │                                     │
+                     └──────────────────┬──────────────────┘
+                                        ▼
+                               重复步骤 2 寻找下一个瓶颈
+</code></pre>
+<p>##26<br>
+哨兵值可以利用，如果可以增加数组长度就在最后加上一个哨兵值，如果不能就把末尾值存下来，替换为哨兵值最后替换回去判断是不是。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li>
+<ul>
+<li><a href="#16">16</a></li>
+<li><a href="#25">25</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/plc/">
+              <h3 class="post-title">
+                PLC
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

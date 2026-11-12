@@ -1,0 +1,884 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>计算机网络 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="计算机网络 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="理论篇
+网络是由若干节点和连接这些结点的链路组成。
+多个网络通过路由器相互连接起来，就变成互联网。
+因特网是最大互联网络。
+访问网站全流程
+
+TCP/IP网络模型
+操作系统靠协议+端口区分程序，比如TCP+8080 和 UDP+8080是不..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              计算机网络
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-10-09
+              </span>
+              <span>
+                56 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="理论篇">理论篇</h1>
+<p>网络是由若干节点和连接这些结点的链路组成。<br>
+多个网络通过路由器相互连接起来，就变成互联网。<br>
+因特网是最大互联网络。</p>
+<h2 id="访问网站全流程">访问网站全流程</h2>
+<figure data-type="image" tabindex="1"><img src="https://dss544.github.io/post-images/1793261022872.png" alt="" loading="lazy"></figure>
+<h2 id="tcpip网络模型">TCP/IP网络模型</h2>
+<p>操作系统靠协议+端口区分程序，比如TCP+8080 和 UDP+8080是不同的。<br>
+在建立连接（三次握手）时，双方会根据本地网卡MTU协商出一个MSS（标准以太网下，MTU通常1500字节，扣除20字节IP头和20字节TCP头部，MSS还有1460字节）。这里是传输层干的活。</p>
+<p>？既然传输层已经切块了，为什么网络层（IP层）还有有一个最大大小限制然后切块呢？<br>
+1、传输层提前切块就是为了防止IP层（网络层）重新切块，因为IP层发生切片，多个切片只要丢失一个，整个TCP段就得全部重新重传。<br>
+2、UDP没有三次握手，也不会根据MSS自动拆分，UDP会把应用层整个塞给IP，这时候IP就要切片了。</p>
+<p>下面这个图就是TCP/IP协议下数据流程，<br>
+应用层（报文）这一块，会给你要发送的数据贴上HTTP头。</p>
+<p>传输层（报文段），如果UDP，在数据前端贴上一个8字节UDP头部（源端口、目的端口、长度、校验和），然后全部赛下方网络层（IP层）。如果TCP，贴上至少20字节TCP头部（序号、确认号、窗口大小、控制标志位等），可能提前切盼，怎么切片看上面&quot;在建立连接（三次握手）时&quot;。</p>
+<p>IP层（数据包）常规条件下只是在传输层送来数据块前端加上20字节IP头部，超限情况下会切分。</p>
+<p>链路层（帧/比特流）只是加上MAC头部（包含目的MAC（6字节）、源MAC（6字节）、上层协议类型（2字节），linux对应的结构体为ethhdr）和FCS帧尾。FCS帧尾是硬件级CRC<br>
+<img src="https://dss544.github.io/post-images/1791593377693.jpg" alt="" loading="lazy"></p>
+<p>为什么需要MAC地址？<br>
+应为在收到网络数据包的时候，首先判断最外面的MAC地址是不是给自己的？如果直接判断IP那么需要剥离很麻烦。可以通过（ARP协议）获取对方MAC地址。还有可能我发一个数据，一个路由器连接192.168.0.1，192.168.0.2 ， 一个路由器连接192.168.0.5，192.168.0.6，这时候你发信息，只要给mac地址就知道转发给谁了。</p>
+<p>经典问题，为什么tcp要三次握手，4次挥手？<br>
+三次握手：电脑（SYN）-&gt;服务器 服务器（SYN+ACK）-&gt;电脑 电脑（ACK ）-&gt;服务器（防止服务器超时重传）<br>
+这样每一个设备都完成了确认自己有首发功能<br>
+四次挥手：（假如电脑关闭）电脑（FIN+ACK）-&gt;服务器 服务器（ACK）-&gt;电脑  (等待两条链路彻底没东西) 服务器（FIN+ACK）-&gt;电脑 电脑（ACK-&gt;服务器 此刻服务器这个端口就被释放出来了，可以使用了，但是电脑这个端口要等待一定时间才能释放，除非设置了端口复用不然无法继续使用直到释放。<br>
+<img src="https://dss544.github.io/post-images/1791686856664.png" alt="" loading="lazy"></p>
+<p>应用层，负责向用户提供一组应用程序，比如 HTTP、DNS、FTP 等;<br>
+传输层，负责端到端的通信，比如 TCP、UDP 等；<br>
+网络层，负责网络包的封装、分片、路由、转发，比如 IP、ICMP 等；<br>
+网络接口层，负责网络包在物理网络中的传输，比如网络包的封帧、 MAC 寻址、差错检测，以及通过网卡传输网络帧等；</p>
+<h2 id="41-tcp如何连接">4.1 TCP如何连接</h2>
+<h3 id="为什么tcp要三次握手而不是四次两次">为什么tcp要三次握手，而不是四次，两次？</h3>
+<p>因为三次已经满足要求，所以不需要四次及以上次数。因为三次握手才能保证双方具有接受和发送的能力（这个两次也可以）。更重要原因如下（核心就是把确定是否连接的权力交给发起连接请求的人）：<br>
+1、三次握手可以阻止重复历史连接<br>
+场景：客户端发送SYN（seq=90），但是再传输过程阻塞超时，客户端重启然后发送SYN（seq = 100），<br>
+注意是重启不是重传，重传的话SYN的seq序列号是一样的。然后上面那个旧的先到，服务器回复SYN+ACK，结果Ack Num=90+1，但是客户端想要的是101，但是此时服务端这个端口已经建立连接了。所以客户端发送RST报文终止连接，然后才能成功。如果只有两次，服务端每收到一个SYN就只能主动建立一个连接，假如SYN阻塞，重复发送多次SYN报文，服务器会建立多个冗余连接，两次无法避免资源浪费。</p>
+<p>此时有一个问题，假如在服务器回复SYN+ACK的时候，客户端接收到进入连接状态，然后发送ACK信号，服务器如果一直接受不到怎么办？下一个客户端的数据包会带上ACK+SEQ和上次一样，如果一直服务器收不到就会超时重传断开。假如客户端静默了服务器就会认为超时，继续超时重传断开ACK+SEQ。</p>
+<p>2、同步双方初始序列号<br>
+序列号作用：1、接收方可以去除重复数据。2、接收方根据数据包序列号按序接受。3、可以标识发出去数据包，那些事已经被对方收到。</p>
+<p><em><strong>小结：</strong></em> TCP建立连接时，通过三次握手能防止历史连接的建立，能减少双方不必要的开销，能帮助双方同步初始化序列号。序列号能保证数据包不重复、不丢弃和按序传输。<br>
+不使用两次：无法防止历史连接建立，会造成双方资源浪费，也无法可靠同步双方序列号。<br>
+不使用四次：三次已经足够。</p>
+<h3 id="为什么每次tcp连接时初始化序列号不一样">为什么每次TCP连接时，初始化序列号不一样？</h3>
+<p>防止历史报文被接受，为了安全性防止黑客伪造相同序列号TCP报文被接受。初始序列号采用ISN随机生成算法：SN = M + F(localhost, localport, remotehost,remoteport)。M是一个计时器，每隔4us加1，F是一个Hash算法，可以用MD5。</p>
+<h3 id="既然ip会分片为什么tcp层还需要mss">既然IP会分片，为什么TCP层还需要MSS？</h3>
+<p>MTU：一个网络包最大长度，以太网一般1500字节。<br>
+MSS：出除去IP和TCP头部，一个网络包能容纳TCP数据最大长度。<br>
+如果TCO整个报文（头部+数据）给IP层分片，那么IP层切片传输后，只要一个IP分片丢失，整个IP报文的所有分片都得重传。</p>
+<h3 id="握手信号缺失">握手信号缺失</h3>
+<p><em><strong>第一次握手信号缺失：</strong></em> 只是客服端不断发送第一次握手信号，次数固定按照1s，2s，4s倍数增长。在达到tcp_syn_retries 次数后，不会再发了等待上一次超时时间两倍，客户端就会断开连接。（<code>cat /proc/sys/net/ipv4/tcp_syn_retries</code>）。<br>
+<em><strong>第二次握手信号缺失：</strong></em> 服务器和客户端都会重新发送，分别是发送第二次握手信号和第一次握手信号。第二次握手信号发送次数是（<code>cat /proc/sys/net/ipv4/tcp_synack_retries</code>）。<br>
+<em><strong>第三次握手信号缺失：</strong></em> 客户端接收到第二次握手信号，会发送ACK信号，假如服务器没接收到就会自动重传第二次握手。</p>
+<h3 id="syn攻击">SYN攻击</h3>
+<p>就是通过不停向服务器发送SYN请求包，把服务器半连接队列弄满导致其他程序无法连接。半连接队列就是服务器就受到SYN信号，就放入SYN队列然后发送SYN+ACK，如果收到了SYN第三次握手信息就放入Accept队列。解决这个攻击有三种方法：<em><strong>1</strong></em>、调大 netdev_max_backlog，就是接受网络数据包缓冲区。<em><strong>2</strong></em>、增大TCP半连接队列。<em><strong>3</strong></em>、开启 net.ipv4.tcp_syncookies，就是半连接满了，不放在半连接了，通过上面哈希值计算作为序列号传入，然后如果发送方回复了，那就代表成功没问题。<em><strong>4</strong></em>减少SYN-ACK重传目的。</p>
+<h2 id="tcp如何断开">TCP如何断开</h2>
+<p>客户端 (FIN，FIN_WAIT_1)-&gt; 服务器<br>
+服务器(ACK，CLOSE_WAIT)-&gt;客户端（FIN_WAIT_2）<br>
+服务器(FIN，LAST_ACK )-&gt;客户端<br>
+客户端(ACK，TIME_WAIT )-&gt;服务器段（CLOSE）<br>
+注意谁主动关闭连接的，才有TIME_WAIT状态，和前面一样，ACK报文是不会重传的。</p>
+<h3 id="为什么挥手需要四次">为什么挥手需要四次？</h3>
+<p>客户端发送FIN，说明客户端不会再发但是会接受。服务器发送ACK表示收到了，我先把还要发给你处理完。处理完成后服务器发送FIN信号说明我要发给你的发完了，此时客户端接受到了说ok你关闭吧，我还等一会把你发的信息处理完。服务器端接收到ACK直接关闭，客户端经过2MSL后进入关闭状态。<br>
+注意，CLOSE_WAIT 状态没有设置任何超时定时器。<br>
+<em><strong>第一次挥手丢包（Client 发 FIN 丢失）：</strong></em><br>
+客户端处于 FIN_WAIT_1，启动超时重传 FIN（受 tcp_orphan_retries 控制）。达到上限后强制释放本地连接。服务端处于不知情的 ESTABLISHED，无心跳机制时会永久挂死。</p>
+<p><em><strong>第二次挥手丢包（Server 回 ACK 丢失）：</strong></em><br>
+服务端已进入 CLOSE_WAIT。客户端因没收到 ACK 继续重发 FIN。服务端收到重发的 FIN 会再次补回 ACK。服务端应用层执行 close() 后发出第三次挥手的 FIN 并切入 LAST_ACK，最终在客户端跑路、等不到第四次 ACK 的情况下超时强制释放。</p>
+<p><em><strong>第三次挥手丢包（Server 发 FIN 丢失）：</strong></em><br>
+服务端处于 LAST_ACK 状态，超时重传 FIN 直到达到最大重试次数后强制释放。客户端此时若处于 FIN_WAIT_2（且执行的是 close），受 tcp_fin_timeout（通常 60 秒）控制，超时后强制释放。</p>
+<p><em><strong>第四次挥手丢包（Client 回 ACK 丢失）：</strong></em><br>
+客户端已进入 TIME_WAIT 倒计时（2MSL）。纯 ACK 不会启动主动重传；而是服务端因收不到 ACK 重传第三次挥手的 FIN。客户端收到重传的 FIN 后被动补发 ACK 并重启 2MSL 计时。若重传链路彻底瘫痪，服务端重试 FIN 耗尽后在 LAST_ACK 强制销毁，客户端等待 2MSL 倒计时结束后自然销毁。</p>
+<h3 id="为什么需要-time_wait-状态">为什么需要 TIME_WAIT 状态？</h3>
+<p>主动发起关闭连接的一方，才有TIME-WAIT状态。需要这个状态是为了让两个方向上数据包都被丢弃，是的下一次再出现的数据包一定是新建立的。还有让被动关闭的一方优雅关闭，假如客户端直接关闭，服务器段再次发送第三次挥手信号，在超时之前直接客户端回复一个RST信号，服务器上层可能爆出异常错误。<br>
+<em><strong>优化TIME_WAIT状态</strong></em><br>
+1、开启<code>tcp_tw_reuse</code>与<code>tcp_timestamps</code>，假如connect满了，系统会把处于TIME-WAIT状态超过1s的端口直接拿来用，开启时间戳就能防止历史数据残留进来。<br>
+2、系统最大允许tcp_max_tw_buckets个TIME-WAIT状态，如果超过了就不要2MSL等待了，直接TCP: time wait bucket table overflow。可以把这个值调大。<br>
+3、直接代码里面是要<code>SO_LINGER</code>发送RST，直接强制双方断开。</p>
+<p>客户端的connect是在第二次握手后，然后服务端的accept是在第三次握手成功之后。<br>
+客户端调用close，发送了FIN报文，然后服务端收到FIN，会插入一个EOF咋接收缓冲区，然后应用程序read这个FIN包，读取到EOF的时候也是用close发送FIN包(这代表你必须read函数必须判断还有close，不然会出现很多TIME_WAIT)，随后第四次挥手。</p>
+<p>TCP快速建立连接，常规是三次握手+HTTP GET+ 返回data，一共5*0.5=2.5RTT，但是最后一次握手时可以携带数据的，把HTTP GET放在第三次挥手，节省了一次变成2RTT。linux内核开启了 TCP Fast Open 功能，就是刚开始使用2次RTT，这个过程传输了一个cookie，然后的日子请求的时候三次握手那些就没了，直接一个SYN+cookie然后ACK就连接上了，整个耗时1RTT。</p>
+<h2 id="42-tcp重传">4.2 TCP重传</h2>
+<h3 id="超时重传">超时重传：</h3>
+<p><em><strong>RTT</strong></em>  数据发送时刻到接受到确认的时刻的时间差值。比如客户端发送SYN信号，直到客户端接收到SYN+ACK信号时间差值。<br>
+<em><strong>RTO</strong></em> 超时重传时间。RTO应该略大于RTT时间，应为RTO较大，重发太慢没有效率。RTO较小，可能没丢包就重发导致重发太多使得网络更加拥塞。<br>
+RFC6289 建议使用以下的公式计算 RTO，不仅滑动滤波RTT，也滑动滤波RTT的变化量。</p>
+<h3 id="快速重传">快速重传：</h3>
+<p>以数据驱动重传，根据ACK信号，假如我发送Seq1 2 3 4 5，结果只发送了Seq1 3 4 5，他在后面3，4，5只会一直回复ACK 2，直到收到Seq 2，连续收到三次这个Ack 2再次回复数据Seq2。<br>
+但是，面临一个问题重新传输1个还是后面所有，这时候通过SACK，这个回复包含已经接收到的信息，比如上面的例子回复[3,5]。</p>
+<h3 id="滑动窗口">滑动窗口：</h3>
+<p><em><strong>发送方滑动窗口</strong></em><br>
+<code>#1、</code>已发送数据并受到ACK<br>
+<code>#2、</code>已发送但是未收到ACK<br>
+<code>#3、</code>未发送但总大小在接收方处理范围<br>
+<code>#4、</code>未发送总大小超过接收方处理范围<br>
+<img src="https://dss544.github.io/post-images/1792110515159.png" alt="" loading="lazy"><br>
+程序通过三个变量来，发送窗口SND.WMD，发送窗口大小（接收方指定），SND.UNA（指向#2的第一个字节），SND.NXT（指向#3的第一个字节），所以可用窗口大小就是现在#3的大小，计算公式为<code>可用窗口大小 = SND.WND -（SND.NXT - SND.UNA）</code></p>
+<p><em><strong>接收方滑动窗口</strong></em><br>
+<code>#1 #2、</code>已成功接收到并确认的数据（等待应用进程读取）<br>
+<code>#3、</code>未 收到的数据，但可以接受<br>
+<code>#4、</code>未收到数据，并不可以接受<br>
+三个接收部分两个指针就可以划分，RCV.WND表示接受窗口大小，RCV.NXT是#3的第一个字节。</p>
+<p>注意如果发生了先减少缓存，再收缩窗口，就会出现丢包的现象。为了防止这种情况，TCP规定不允许同时减少缓存和收缩窗口，而是先收缩窗口再减少缓存。</p>
+<h3 id="窗口关闭">窗口关闭</h3>
+<p>如果窗口大小为0，就会阻值发送方给接收方传递数据，直到窗口变为非0为止，这就是窗口关闭。<br>
+窗口关闭后，发送方会进行等待接收方处理信息后，窗口大小不为0回复ACK包。但是如果ACK包传输过程丢失就会产生死锁现象。<br>
+接收方会启动一个持续定时器，发送窗口探测报文，对方接收到这个报文返回自己的窗口大小。</p>
+<h3 id="糊涂窗口综合征">糊涂窗口综合征</h3>
+<p>如果接收方现在只有几个字节窗口大小了，结果发送方每次发送几字节，但是TCP+IP头部都至少40字节了。这也就是不太划算。解决方法是：要么接收方不通告小窗口，要么发送方不发送小数据。<br>
+发送方策略：Nagle算法，该算法是延时处理，伪代码如下</p>
+<pre><code class="language-c">if 有数据要发送{
+    if 可用窗口大小 &gt;= MSS and 可发送的数据 &gt;= MSS{
+        立刻发送MSS大小的数据
+    } else {
+        if 有未确认的数据 {
+            将数据放入缓存等待接收ACK
+        } else {
+            立刻发送数据
+        }
+    }
+}
+</code></pre>
+<p>接收方得满足「不通告小窗口给发送方」+ 发送方开启 Nagle 算法，才能避免糊涂窗口综合症。不然发送小窗口会满足Nagle算法的下面条件。</p>
+<p>接收方策略：David D. Clark 算法（别乱通告小窗口）<br>
+规则：当接收缓冲区有空位时，只要空位还没达到一个最大报文段大小（MSS，通常约 1460 字节），或者还没达到接收缓冲区总容量的一半（50%），就坚决通告 Window = 0！</p>
+<p>效果：哪怕应用程序读走了 2 个字节，内核也装作没空位，憋着不发通告，直到应用程序攒够读出一大批空间，才一口气通告一个大窗口给对方。</p>
+<h3 id="拥塞控制">拥塞控制</h3>
+<p>swnd = min(cwnd,rwnd)，cwnd就是拥塞窗口，他是根据网络的拥塞程度动态变化的。<br>
+<img src="https://dss544.github.io/post-images/1792208839753.png" alt="" loading="lazy"></p>
+<h2 id="43-抓包分析">4.3 抓包分析</h2>
+<p>TCP三次握手第一次没发送过去，就会一直重复发送。<br>
+TCP第二次握手没发送过去，第一次握手会重发，而且每次收到SYN第二次握手都会重发，然后第二次握手也会有一个重发操作，直到重发次数达到最大再继续重发。<br>
+TCP第三次握手没发过去，客户端发送一次ACK，服务区会发送SYN_ACK直到超时。TCP建立连接后的数据包传输，最大超时重传次数是由 tcp_retries2 指定，如果还是传不过去，客户端就会断开ESTABLISHED 。如果没有数据传输就会开启TCP保活机制，就是上面说的探测报文。</p>
+<h2 id="44-半连接队列和全连接队列">4.4 半连接队列和全连接队列</h2>
+<p>服务段可以使用ss命令查看TCP全连接队列，除注意ecv-Q/Send-Q 在「LISTEN 状态」和「非 LISTEN 状态所表达的含义。Recv-Q：当前全连接队列的大小，也就是当前已完成三次握手并等待服务端 accept() 的 TCP 连接。Send-Q：当前全连接最大队列长度。<br>
+非LISTEN状态所表达的含义：Recv-Q：已收到但未被应用进程读取的字节数；Send-Q：已发送但未收到确认的字节数；</p>
+<p><em><strong>全连接爆满</strong></em><br>
+当服务器并发处理大量请求，如果TCP全连接队列数量过小，发生TCP全连接溢出时，后续请求就会被抛弃。也可以选择向客服端发送RST复位报文，根据<code>/proc/sys/net/ipv4/tcp_abort_on_overflow</code>，这个值0就默认行为抛弃，1就是发送RST报文。0的话能让服务器更好处理突发请求过多,比较温和。<br>
+全连接队列最大值是sk_max_ack_backlog变量，sk_max_ack_backlog 实际上是在 listen() 源码里指定的，也就是min(somaxconn, backlog)；</p>
+<p><em><strong>半连接爆满</strong></em><br>
+如果半连接队列满了，没有开启<code>tcp_syncookies</code>，直接丢弃。<br>
+如果全连接满了，而且没有重传<code> SYN+AC</code>K 包的连接请求多于 1 个（说明外部持续有设备想要连接，网络过载并非偶然），则会丢弃。<br>
+如果没有开启<code>tcp_syncookies</code>，且<code>max_syn_backlog</code>减去 当前半连接队列长度小于(max_syn_backlog &gt;&gt; 2)（只剩25%），则会丢弃；<br>
+半连接队列最大值是<code>max_qlen_log</code>变量，最大值数量肯定是2的倍数，所以满了直接返回<code>qlen(实际连接数) &gt;&gt;max_qlen_log</code>即可判断是否满了。半连接队列的实际大小，不仅受到变量tcp_max_syn_backlog的限制，还同时受到全连接队列上限（listen backlog 和 somaxconn）的制约，并且最终必须通过算法向上对齐为 2 的幂次方。理论计算最小值为8，最大值为min(全连接队列最大数量，tcp_max_syn_backlog)。具体计算函数如下(假设保底大小8不会被触发) linux老版本了Linux 2.6.32<br>
+<em><strong>既然 SYN Cookie 既能省下半连接队列的内存，又能防御 SYN Flood 攻击，为什么 Linux 默认不彻底干掉半连接队列，而是只在队列被打满时才临时启用它？</strong></em><br>
+代价一：服务端无法重传第二次握手包（丢失就瘫痪）SYN Cookie不保存连接方信息。<br>
+代价二：引入了算力瓶颈 收到 SYN 要算一次 Hash（编码）；收到客户端的第三次握手 ACK 时，还要再算一次 Hash 进行逆向校验（解码）Cookie 的本质是一个带密钥的散列运算（Hash）。</p>
+<pre><code class="language-c">qlen = min(全连接数量min(listen backlog,somaxconn), 系统设置最大半连接数量tcp_max_syn_backlog ) * 2
+</code></pre>
+<p><img src="https://dss544.github.io/post-images/1792376163542.png" alt="" loading="lazy"><br>
+在Linux 5版本，半连接数量判断满了没直接是等于全连接数量，但是还有收到tcp_max_syn_backlog的75%制约，如果没有开启tcp_syncookies。<img src="https://dss544.github.io/post-images/1792376962194.png" alt="" loading="lazy"></p>
+<p>所以根据上面分析，避免SYN攻击（让半连接队列溢出）方法如下：<br>
+增大半连接队列；tcp_max_syn_backlog listen backlog 和 somaxconn都要增大<br>
+开启 tcp_syncookies 功能；半连接放不发直接启动cookie值。<br>
+减少 SYN+ACK 重传次数。达到重传次数直接把该连接从半连接队列提出。<br>
+tcp的option字段<br>
+<img src="https://dss544.github.io/post-images/1792417623246.png" alt="" loading="lazy"></p>
+<h3 id="45">4.5</h3>
+<p><em><strong>优化三次握手策略</strong></em><br>
+<img src="https://dss544.github.io/post-images/1792474480903.png" alt="" loading="lazy"><br>
+如果双方同时FIN信号 就直接都进入FIN_WAIT_1，就都进入一个closing状态然后等待对方发的ack就进入了TIME_WAIT状态。如果一个变成closing没关系，他回复ack先到，服务器变成FIN_WAIT_2，然后街道FIN。回复个ACK双方都TIME_WAIT了。<br>
+<em><strong>优化四次挥手策略</strong></em><br>
+<img src="https://dss544.github.io/post-images/1792474389336.png" alt="" loading="lazy"><br>
+被动关闭在收到fin型号进入close_wait状态，此时等待引用程序是由close关闭发送第三次挥手，如果服务器出现大量close_wait，大概率是上层应用没使用close。<br>
+<em><strong>优化传输过程策略</strong></em><br>
+<img src="https://dss544.github.io/post-images/1792476300765.png" alt="" loading="lazy"></p>
+<p>带宽时延积BDP=RTT<em>带宽<br>
+比如带宽100MB/s，网络时延（RTT）是10ms，意味着客户端到服务端的网络一共可以存放100MS/s</em>0.01s=1MB字节<br>
+全连接队列满了，默认丢弃syn信号，也可以选择发送RST信号。<br>
+半连接队列满了，默认激活cookie，也可以直接丢弃，也可以不管慢不慢都走cookie。</p>
+<h1 id="代码篇">代码篇</h1>
+<p>htons 是unsigned类型 主机序转网络序（大端），ntohs则相反，网络序转主机序。<br>
+MAC头结构体如下</p>
+<pre><code class="language-c">struct ethhdr {
+	unsigned char	h_dest[ETH_ALEN];	/* 目的MAC地址	*/
+	unsigned char	h_source[ETH_ALEN];	/* 源MAC地址	*/
+	__be16		h_proto;		/* 数据类型	*/
+} __attribute__((packed));
+</code></pre>
+<h3 id="46">4.6</h3>
+<p>TCP面向字节流，什么时候发送取决于发送窗口、拥塞窗口以及当前发送缓冲区的大小等条件</p>
+<p>UDP面向报文，操作系统不会对消息进行拆分，每一个UDP就是消息的边界。</p>
+<p>粘包”并不是 TCP 协议的 Bug，而是 TCP 面向字节流（Byte Stream）特性的自然表现。<br>
+粘包的问题出现是因为不知道一个用户消息的边界在哪，如果知道了边界在哪，接收方就可以通过边界来划分出有效的用户消息。<br>
+处理粘包：1、固定大小。2、特殊字符为边界。3、自定义消息结构。</p>
+<h3 id="47">4.7</h3>
+<p>为什么 TCP 每次建立连接时，初始化序列号都要不一样呢？<br>
+为了防止历史报文被下一个相同四元组的连接接受。虽然TCP四次挥手的TIME_WAIT状态会持续2MSL时长，但历史报文还是有可能没完全消失。<br>
+<img src="https://dss544.github.io/post-images/1792545514850.png" alt="" loading="lazy"><br>
+初始序列号生成算法：<br>
+IP头结构体如下ISN = M + F(localhost, localport, remotehost,remoteport)。M是一个计时器，这个计时器每隔 4 微秒加1。F是根据四元组计算。<br>
+为了彻底解决这个问题，就需要TCP时间戳。TCP 头部就会使用时间戳选项，它有两个好处，一个是便于精确计算 RTT ，另一个是能防止序列号回绕（PAWS）</p>
+<h3 id="48">4.8</h3>
+<p>SYN 报文什么情况下会被丢弃？<br>
+一、 开启 tcp_tw_recycle 触发 per-host PAWS 机制误杀<br>
+触发条件：服务端同时开启了 net.ipv4.tcp_timestamps = 1 和 net.ipv4.tcp_tw_recycle = 1。   丢弃机制：此时内核会以“对端 IP（Host）”为单位缓存最新的时间戳（per-host PAWS）。若客户端处于 NAT 网络环境，多个局域网终端共用同一个公网 IP，不同终端的时间戳存在快慢差异。若后发起建连的终端时间戳小于前一个终端留下的时间戳，服务端会将其判定为迷途旧包，直接静默丢弃其 SYN 报文。<br>
+二、 全连接队列（Accept Queue）满溢，半连接队列（SYN Queue）满溢</p>
+<h3 id="49">4.9</h3>
+<p>伪造RST信号必须知道四元组信息和序列号，下面有两个工具。<br>
+tcpkill 是“守株待兔”：你不动我不动，你只要一说话被我听到（抓到包），我就用你刚说过的序号仿造 RST 杀了你。   killcx 是“投石问路”：你不动我也能治你，我主动冲你扔个石头（发伪造 SYN），逼你必须回我一句（回 Challenge ACK），借此套出你的底牌序号，然后再发射 RST 杀了你。<br>
+客户端掉线，服务器不知道再次连接，客户端随机发一个seq，然后服务器发现不对发送正确challenge，然后客户端发现对不上直接rst。</p>
+<h3 id="410">4.10</h3>
+<p>四次挥手中收到乱序的FIN包会如何处理？（shutdown只关闭写端）<br>
+因为 TCP 是严格面向保序字节流的协议，FIN 标志位本身在协议中占用 1 个字节的序列号。当第三次挥手的 FIN 报文因为网络乱序先于前面的数据到达时，主动方内核检测到存在序号空洞，不会直接处理该 FIN，也不会直接进入 TIME_WAIT 状态，而是将这个乱序的 FIN 报文暂存在**乱序队列（ofo queue）**中。   当滞后的数据包到达补齐空洞后，数据会被送入接收队列供应用层正常读取；随后内核自动激活处理乱序队列中的 FIN 报文，回复第四次挥手 ACK 并正式转入 TIME_WAIT 状态。”</p>
+<p>SYN 报文（握手） 与 FIN 报文（挥手） 虽然通常不携带实际的业务 Payload（数据长度为 0），但在 TCP 规范中，它们在逻辑上强制占用 1 个字节的序列号。<br>
+纯 ACK 确认报文（不带数据、无 SYN/FIN）。</p>
+<h3 id="411">4.11</h3>
+<p>在 TIME_WAIT 状态的 TCP 连接，收到 SYN 后会发生什么？ 所以这一题怎么简短回答<br>
+核心定性：处于 TIME_WAIT 的连接收到相同四元组的 SYN 报文时，Linux 会依据时间戳（PAWS）或序列号判断其合法性。</p>
+<p>合法情况（时间戳单调递增，或未开启时序列号大于期望值）：服务端判定为新发起的合法连接，直接复用该连接跳出 TIME_WAIT，状态切为 SYN_RECV 并回送 SYN+ACK 完成正常握手。</p>
+<p>非法情况（时间戳倒退，或未开启时序列号小于等于期望值）：服务端判定为网络迷途旧包，直接丢弃该 SYN 报文，并回送一个 Challenge ACK（携带旧连接进度）；客户端收到后因状态不匹配会回复 RST，进而将服务端该 TIME_WAIT 连接彻底关闭。</p>
+<h3 id="412">4.12</h3>
+<p>TCP连接，一端断电和进程崩溃有什么区别？<br>
+总结如果「客户端进程崩溃」，客户端的进程在发生崩溃的时候，内核会发送FIN报文，与服务端进行四次挥手。<br>
+但是，「客户端主机宕机】，那么是不会发生四次挥手的，具体后续会发生什么？还要看服务端会不会发送数据?·如果服务端会发送数据，由于客户端已经不存在，收不到数据报文的响应报文，服务端的数据报文会超时重传，当重传总间隔时长达到一定阈值(内核会根据tcp_retries2 设置的值计算出一个阈值）后，会断开TCP连接；·如果服务端一直不会发送数据，再看服务端有没有开启TCP keepalive 机制？。如果有开启，服务端在一段时间没有进行数据交互时，会触发TCP keepalive机制，探测对方是否存在，如果探测到对方已经消亡，则会断开自身的TCP连接；。如果没有开启，服务端的TCP连接会一直存在，并且一直保持在ESTABLISHED状态。</p>
+<h3 id="413">4.13</h3>
+<p>客户端拔掉网线后，并不会直接影响TCP连接状态，要看此时有无数据传输，<em><strong>有数据传输</strong></em>，在服务器达到最大传输次数前插回网线 依然正常。如果服务端达到重传最大值，服务端断开连接，此时客户端发送信息服务器直接回RST报文。<em><strong>无数据传输</strong></em> 要看有没有开启保活机制，如果都没有拿双方一直连接，如果都开启了那要看有没有达到最大重传速度。</p>
+<h3 id="414">4.14</h3>
+<p>tcp_tw_reuse要依赖TCP时间戳tcp_timestamps，而且两端都得开启，这样才能安全复用TIME_WAIT相同四元组。</p>
+<h3 id="417">4.17</h3>
+<p>TCP协议有什么缺陷？<br>
+升级TCP工作很困难，很多tcp特性需要客户端服务端都支持。<br>
+TCP存在建立连接的延迟，TCP存在队头阻塞问题。<br>
+网络迁移需要重新建立TCP连接，因为tcp依据四元组确定链接，移动设备从流量切换为wifi时，ip地址变了就需要重新建立TCP连接。<br>
+QUIC 协议是基于udp的可靠协议，把这些tcp缺点就解决了。</p>
+<h3 id="419">4.19</h3>
+<p>服务端在异常退出或重启时，如果该端口上还有上一次运行残留的、处于 TIME_WAIT 状态的连接，设置 SO_REUSEADDR 属性后，能让新启动的服务端进程成功执行 bind() 和 listen()，重新在该端口上开启监听并接收新连接。还有这个能保证字符不一样也能绑定，比如0.0.0.0:80绑定了我192.168.1.100:80也能绑定。<br>
+监听阶段（只看二元组：IP + 端口）</p>
+<h3 id="421">4.21</h3>
+<p>没有listen，为什么还能建立连接？<br>
+没有listen，也就没有半连接（哈希表）全连接（链表），但是内核还有全局hash表，可以存放socket连接信息，可以通过它实现自连接或TCP同时打开。</p>
+<h3 id="422">4.22</h3>
+<p>除了tcp层的流量控制，linux内核也有流量控制。内核维护一个发包缓冲队列，长度由txqueuelen控控制，当发送数据过快就容易丢包。当 Ring Buffer 满了，网卡驱动会调用 netif_stop_queue() 通知内核暂停发包；此时新产生的数据包就会积压在上一层的 qdisc 队列中。如果 qdisc 队列也堆满了（达到 txqueuelen 设定的上限），就会触发你之前看到的 qdisc dropped 丢包。<br>
+TCP只保证传输层可靠性，不能保证应用层可靠性。mtr命令能检测本地机器到目的机器每个节点情况。</p>
+<h3 id="423">4.23</h3>
+<p>close让文件引用计数减去1，如果父子进程都有的话，如果没减到0还是能继续发。但是shutdown是直接发送fin报文，然后父子进程都会关闭。<br>
+什么时候会出现三次挥手？<br>
+当被关闭一方没数据发送，而且开启了TCP 延迟确认机制，二三次挥手就会合并。延迟等待策略如下：<br>
+当有响应数据要发送时，ACK会随着响应数据一起发送给对方。<br>
+如果没有，ACK会延迟一段时间等待后发送，如果在延迟等待发送ACK期间，对方的第二个数据报文有到了，这里时刻发起ack。</p>
+<h3 id="424">4.24</h3>
+<p>序列号，确认号计算<br>
+公式一：序列号 = 上一次发送的序列号 + len（数据长度）。特殊情况，如果上一次发送的报文是 SYN 报文或者 FIN 报文，则改为 上一次发送的序列号 + 1。<br>
+公式二：确认号 = 上一次收到的报文中的序列号 + len（数据长度）。特殊情况，如果收到的是 SYN 报文或者 FIN 报文，则改为上一次收到的报文中的序列号 + 1。<br>
+纯ack下一次的seq和上一次一样。</p>
+<figure data-type="image" tabindex="2"><img src="https://dss544.github.io/post-images/1792562544977.png" alt="" loading="lazy"></figure>
+<h2 id="ip">IP</h2>
+<h3 id="ip的分类">IP的分类</h3>
+<p>IP分为ABCDE。<br>
+<img src="https://dss544.github.io/post-images/1792807337062.png" alt="" loading="lazy"><br>
+其中DE的IP地址范围如下，D为多播地址，一个IP相当于一个群组，任何人往这个群组里面发信息，其他人都会立即接受到。<br>
+<img src="https://dss544.github.io/post-images/1792807470582.png" alt="" loading="lazy"><br>
+ABC的ip地址分类如下，有公有IP和私有IP，如果设置为公有IP可能无法上网。<br>
+<img src="https://dss544.github.io/post-images/1792809926306.png" alt="" loading="lazy"></p>
+<h3 id="ipv6-基本认识">IPv6 基本认识</h3>
+<p>IPV6有以下好处：<br>
+IPv6 可自动配置，即使没有 DHCP 服务器也可以实现自动分配IP地址。<br>
+IPv6 包头包首部长度采用固定的值 40 字节，去掉了包头检验和，简化了首部结构，减轻了路由器负荷，大大提高了传输的性能。<br>
+IPv6有应对伪造IP地址的网络安全功能以及防止线路窃听的功能，提升了安全性。</p>
+<p>IPv6相对于IPv4改进：<br>
+取消首部校验和字段，取消选项字段，固定首部结构。<br>
+取消分片/重组相关字段，IPv6 不允许在中间路由器进行分片与重组，这种操作只能源与目标主机。</p>
+<h3 id="arprarp协议">ARP/RARP协议</h3>
+<p>IP层写入ip地址的时候，传给物理层需要知道下一跳mac地址，这时候通过ARP协议。<br>
+设备通过广播发送ARP请求（广播），然后局域网内设备接收到后，如果发现是自己，就把MAC地址塞入 ARP 响应包（单播）。<br>
+RARP协议恰恰相反，他是已知MAC地址求ip，在打印机等小型嵌入式设备经常用到。</p>
+<h3 id="dhcp协议">DHCP协议</h3>
+<p><img src="https://dss544.github.io/post-images/1792821684980.png" alt="" loading="lazy"><br>
+DHCP中，全程使用UDP广播通信。</p>
+<h3 id="nat">NAT</h3>
+<p>优点：拯救IPv4枯竭，自带天然防火墙，外网不知道内网私有ip，只有主动发起连接才行。<br>
+缺点：外部无法主动与NAT内部服务器连接，因为NAPT转换表没有转换记录。连接表生成与转换操作都会产生性能开销。如果NAT路由器重启，所有TCP连接都被重置。<br>
+NAT穿透技术：<br>
+为了能让两个躲在NAT路由器后面设备直接通信，发明了这个。<em><strong>1、主动协商</strong></em>核心原理就是让网络程序自己来修改NAPT转化表，比如让路由器的8888端口绑定到我程序的6666端口，这样外部网络来连接也能直连了。<em><strong>2、打洞技术</strong></em>是没有权限修改路由器配置的情况下，双方借助公网服务器交换外网端口信息，并同时发包诱导各自的 NAT 路由器建立映射条目，实现端到端直连。”</p>
+<h3 id="icmp">ICMP</h3>
+<p>ICMP 全称是 Internet Control Message Protocol，也就是互联网控制报文协议。主要功能是：确认IP包是否成功送达目标地址，报告发送过程中IP包被废弃的原因和改善网络设置等。分为查询报文类型，差错报文类型。</p>
+<h3 id="igmp">IGMP</h3>
+<p>IGMP 是因特网组管理协议，专门用于组播地址（D类地址），工作在主机（组播成员）和最后一跳路由之间。</p>
+<h1 id="http">HTTP</h1>
+<p>HTTP是一个在计算机世界专门在两点之前传输文字、图片、音频等超文本数据的约定和规范。<br>
+<img src="https://dss544.github.io/post-images/1792973927633.png" alt="" loading="lazy"></p>
+<h2 id="http常用字段">HTTP常用字段</h2>
+<p>Host：客户端发送请求时，指定服务器域名。<br>
+Content-Length：服务器本次回应数据长度。<br>
+Connection：默认为Keep-Alive，保持长连接。<br>
+Content-Type：服务器回应时，表示本次数据是什么格式，客服端用Accept表示能接受那些数据格式。<br>
+Content-Encoding ：服务器用了什么压缩格式。客户端用Accept-Encoding表示接受那些压缩格式。</p>
+<h3 id="http缓存">HTTP缓存</h3>
+<p><em><strong>强缓存</strong></em>，响应码 200。通过http响应头部Response Header实现，表示资源在客户端缓存有效期：<code>Cache-Control</code>是相对时间，<code>Expires</code>是绝对时间，<code>Cache-Control</code>优先级高于<code>Expires</code>。客户端下次访问这个，会看数据有没有过期，没有直接用这个缓存，有就再次发送数据给服务器。<br>
+<em><strong>协商缓存</strong></em>，响应码304，有两种方式实现，<em><strong>第一种</strong></em>是请求头部<code>If-Modified-Since</code>，值位上一次修改时间，上传给服务器，响应头部为<code>Last-Modified</code>，表示这个响应资源的最后修改时间。如果过期，响应码200，无更新响应码304。<em><strong>第二种</strong></em>请求头部为<code>If-None-Match</code>，值为上一次<code>Etag</code>，当资源过期，客户端传输，服务器返回最后<code>Etag</code>,如果过期，响应码200，无更新响应码304。<br>
+<code>Etag</code>优先级更高，因为第一种只能精确到s，还有内容不更改最后修改时间改了，服务器也可能不能精确获取文件修改时间。<br>
+真实http抓包</p>
+<pre><code class="language-text">wireshark输入http，然后命令行输入curl -v http://neverssl.com
+你的电脑 (55094)                                服务器 (80)
+      |                                              |
+      |=========== 阶段一：TCP 三次握手 ===========|
+1.235 | ------------ [SYN] Seq=0 ------------------&gt; | (第一次握手)
+1.470 | &lt;----------- [SYN, ACK] Seq=0 Ack=1 -------- | (第二次握手)
+1.470 | ------------ [ACK] Seq=1 Ack=1 ------------&gt; | (第三次握手，连接建立)
+      |                                              |
+      |=========== 阶段二：发送 HTTP 请求 =========|
+1.484 | ------------ GET / HTTP/1.1 ---------------&gt; | (你向服务器要网页数据)
+      |                                              |
+      |=========== 阶段三：传输响应数据 ===========|
+1.828 | &lt;----------- [ACK] Seq=1 Ack=77 ------------ | (纯ACK，确认收到你的请求)
+1.828 | &lt;----------- [ACK] Len=1300 ---------------- | (服务器传回数据切片1)
+1.828 | &lt;----------- [ACK] Len=1300 ---------------- | (服务器传回数据切片2)
+1.828 | &lt;----------- [TCP Retransmission] 200 OK --- | (网页数据重传与组装)
+1.828 | ------------ [ACK] Seq=77 Ack=2601 --------&gt; | (你确认收到前半部分)
+1.829 | ------------ [ACK] Seq=77 Ack=4262 --------&gt; | (你确认收到全部 4262 字节)
+      |                                              |
+      |=========== 阶段四：TCP 连接关闭 ===========|
+1.842 | ------------ [FIN, ACK] -------------------&gt; | (你主动提议断开连接)
+2.146 | &lt;----------- [FIN, ACK] -------------------- | (服务器同意并提议断开)
+2.146 | ------------ [ACK] Seq=78 Ack=4263 --------&gt; | (四次挥手终结，蓝色背景)
+</code></pre>
+<h2 id="http11优缺点">HTTP/1.1优缺点</h2>
+<p>1、无状态，好处是服务器不去记忆HTTP状态，减轻服务器负担，坏处是完成有关联性操作会非常麻烦。<br>
+解决方案可以使用<code>Cookie</code>技术。<br>
+2、明文传输，好处是可以wireshark抓包分析，方便调试。坏处是信息罗本已被窃取隐私。<br>
+HTTP协议基于TCP/IP，使用[请求-应答]通信模式。<br>
+HTTP/1.1 引入了 管道化机制，解决了请求阶段的队列阻塞，但是响应阶段的队头阻塞依然存在。即第一个请求必须收到第二个请求才能返回结果。<br>
+HTTP1没有请求优先级控制，请求只能从客户端开始，服务器被动响应。请求/响应头部未经呀u送就发送，首部信息越多延迟越大，只能压缩body。</p>
+<h2 id="https解决了http哪些问题">HTTPS解决了HTTP哪些问题</h2>
+<p>HTTPS在HTTP与TCP层之间加入了<code>SSL/TLS</code>协议，采用混合加密（对称加密和非对称加密混合）实现信息机密性，<em><strong>摘要算法实现完整性</strong></em>，为数据生成独一无二指纹，将服务器公钥放在数字证书，解决了冒充风险。<br>
+*<em><strong>可以用哈希算法确保消息完整性</strong></em>，<em><strong>数字签名保证数据来源可靠性</strong></em>，数字前面就是对哈希结果进行私钥加密，后面对数据进行哈希运算，对数字签名进行公钥解算，就可以查看二者值是否相等确保消息有没有被篡改。<br>
+<em><strong>但是</strong></em>，如果这个时候有一个中间人，拦截了服务器对浏览器的公钥，然后用自己公钥对其发送给浏览器，浏览器以为中间人公钥是正确的，加密数据传给中间人，中间人将其解密然后再用服务器公钥加密发送给服务器，这样数据隐私性就被破坏了。解决方案是为公钥添加数字证书，听过数字证书认证机构（CA）CA 把（服务器公钥 + 网站域名 + 有效期）打包成明文，对这整包内容算出一个 哈希值（Hash），再用 CA 的私钥对这个哈希值加密，生成“数字签名”），然后客户端浏览器或者操作系统利用内置CA公钥解密，看看解密出来和公钥是否一致，不一样说明就是中间人攻击了。流程如下<br>
+<img src="https://dss544.github.io/post-images/1792981688727.png" alt="" loading="lazy"></p>
+<h2 id="tls握手">TLS握手</h2>
+<p>首先客户端发送Client Hello（包含随机数C，客户端TLS版本号，客户端支持的密码套件列表）<br>
+客户端回复ACK后，服务器发送一个Server Hello（包含随机数S，确认TLS版本号，使用的加密算法），再发送数字证书。<br>
+客服端回复ACK后，会用内置CA公钥，验证服务器合法性，然后提取出公钥，然后使用它加密报文，再次发送信息（一个随机数pre-master key，公钥加密的）。然后发送通知（加密通信算法改变），后续信息都用会话密钥加密通信，然后发送客户端握手结束通知，这一阶段会把之前发生的数据做个摘要，给服务器校验。<br>
+服务器最后回应，加密算法改变通知，再发送服务器握手结束，同样把之前所有数据做个摘要，给客户端检验。<br>
+SSL/TLS 1.2s具体四次握手流程如下2个RTT，SSL/TLS 1.3优化为1个RTT：<br>
+<img src="https://dss544.github.io/post-images/1792992204335.png" alt="" loading="lazy"><br>
+CA签发证书过程如下，CA把持有者的公钥，用途，颁发者，有效时间等信息打包成一个包，然后hash生成指纹，然后CA会用自己密钥把HASH加密，然后生成签名，客户端先用hash计算一下，然后用公钥解密这个签名看和自己算的指纹一不一样。</p>
+<h2 id="https的应用数据如何保证完整性tls记录协议">HTTPS的应用数据如何保证完整性（TLS记录协议）</h2>
+<p>1、切块与压缩，消息被分割成多个较短的片段，分别对片段进行压缩。<br>
+2、贴上防伪印，得到一个认证标签，贴在数据块后面。为防止重放攻击，这个MAC还放了数据包序号。计算公式如下<code>MAC 值 = HMAC_Hash( 会话密钥, 隐式包序号 + 数据类型 + 版本号 + 长度 + 压缩后的明文数据 )</code>。<br>
+3、把真实数据和算出来MAC印章捆绑在一起，使用堆成会话密钥计算。<br>
+4、贴上快递面单，在明文的前面加上5字节（数据类型，版本号，长度）。<br>
+流程如下：<br>
+<img src="https://dss544.github.io/post-images/1793007884953.png" alt="" loading="lazy"></p>
+<p>HTTPS协议本身正确，如果被中间人攻击了只有两个原因，一是用户自己点击了“忽略警告，继续访问”。二是电脑/手机中毒，被底层注入了“恶意根证书”。<br>
+真正军工或者银行，都采取双向加密，比如u盾，不仅服务器要发送证书，客户端也要证书，流程如下：<br>
+<img src="https://dss544.github.io/post-images/1793009330547.png" alt="" loading="lazy"></p>
+<h2 id="http2">HTTP2</h2>
+<p>1、头部压缩<br>
+HTTP/2会压缩头，如果发送多个请求，他们头是一样的会消除重复部分。<br>
+一个HTTP/2帧的头部固定只有9字节：</p>
+<pre><code class="language-c">+-----------------------------------------------+
+|                 Length (24 bits)              | -&gt; 这一帧有多长
++---------------+---------------+---------------+
+|   Type (8 bits) |  Flags (8 bits)|             | -&gt; 帧类型(是HEADERS还是DATA)
++-+-------------+---------------+---------------+
+|R|               Stream ID (31 bits)           | -&gt; 流ID(属于哪一个请求/响应)
++-----------------------------------------------+
+|                   Frame Payload (变长)        | -&gt; 真实的数据内容
++-----------------------------------------------+
+</code></pre>
+<p>并发传输，stream的客户端，流ID序列号只能从奇数开始，并以奇数递增，服务器端则相反，偶数开始以偶数递增。HTTP/2在一定程度上改善了传统的[请求-应答]工作模式，服务端不再是被动响应，可以主动给客户端发消息。</p>
+<h2 id="http3">HTTP3</h2>
+<p>使用UDP协议，解决了队头阻塞，使用QUIC，无队头阻塞，更快的连接建立以及连接迁移。</p>
+<p>几代http发展：<br>
+<img src="https://dss544.github.io/post-images/1793059236110.png" alt="" loading="lazy"></p>
+<h2 id="如何减少http请求次数">如何减少HTTP请求次数？</h2>
+<h3 id="缓存技术">缓存技术</h3>
+<p>缓存了没过期下一次直接访问本地文件，过期就携带响应数据摘要，服务器看内容有无修改，没有发送不带包体304回应（可带上<code>max-age</code>刷新缓存寿命），有则回复200带新数据和到期时间。<br>
+<img src="https://dss544.github.io/post-images/1793060431515.png" alt="" loading="lazy"><br>
+307，308分别是302，301的严格版，就是你原来是什么方法携带了什么数据，重新返回给你你请求新location的，携带数据完全一样。然后303就是不管你get还是post方法，返回303和一个location，强制你使用GET访问location，比如你支付宝支付成功直接返回这个支付成功页面，这样你刷新还是支付成功。</p>
+<h3 id="重定向">重定向</h3>
+<p>原本客户端处理重定向请求，交给代理服务器。</p>
+<h3 id="合并请求">合并请求</h3>
+<p>把网页的很多小图片，小图标合并成一个图片发送，以及利用打包工具把js、css等资源合并成大文件，另外也可以把图片二进制数据用base54编码，以url形式嵌入到HTML中，跟HTML文件一起发送。<br>
+缺点：当大资源里面一个小资源发生变化，客户端需要重新下载完整大资源。</p>
+<h3 id="延迟发送请求">延迟发送请求</h3>
+<p>一个html文件含有很多http的url，可以通过按需获取的方式，请求网页，只获取当前用户看到的页面资源，当用户下滑在申请发送。</p>
+<h2 id="如何减少http响应数据大小">如何减少HTTP响应数据大小</h2>
+<h3 id="无损压缩">无损压缩</h3>
+<p>客户端支持压缩算法，会在HTTP请求中通过头部中的<code>Accept-Encoding</code>字段告诉服务器<code>Accept-Encoding: gzip, deflate, br</code>，服务器收到，会选择一个合适的压缩算法<code>Content-Encoding: gzip</code>。</p>
+<h3 id="有损压缩">有损压缩</h3>
+<p>可以通过HTTP请求头部<code>Accept</code>字段的[q质量因子]，告诉服务器期望的资源质量。<code>Accept: audio/*; q=0.2, audio/basic</code>，现代传输视频都用差值传送，因为一个视频中可能只有人物动，大部分背景不懂，差值能去除很多冗余0。</p>
+<h2 id="34-https-echde握手解析">3.4 HTTPS ECHDE握手解析</h2>
+<h3 id="dh算法">DH算法</h3>
+<p>设客服端公钥为A，<code>A=G^a(mod p)</code>，服务器公钥为B，<code>B=G^b(mod p)</code>，p，G双方都知道，可以明文传输，a，b都是自己生成的，然后互相传A，B，得到后客户端运算<code>K=A^B(mod p)</code>，服务器运算<code>K=B^A(mod p)</code>，计算出来结果是一样的。<br>
+推导过程：</p>
+<pre><code>首先已知(X×Y)(modp)=((X(modp))×(Y(modp)))(modp)，很简单就是令X=ap+x，Y=bp+y即可证明
+所以K=(G^a(mod p))^b(mod p) = (G^a)^b(mod p) = (G^b)^a(mod p)
+</code></pre>
+<h3 id="dhe算法">DHE算法</h3>
+<p>就是每次这个客户端，服务器的这个a，b都是随机算的。</p>
+<h3 id="ecdhe算法">ECDHE算法</h3>
+<p>利用椭圆曲线性质，上面的DHE乘法太多次计算量太大，为了减少计算量发明这个算法兼顾性能。通过在椭圆上跳点，最后双方计算一致。<br>
+在连接结束后，会在内存销毁a，b，K，这样就能前向保密了。</p>
+<p><em><strong>TLS第一次握手</strong></em><br>
+客户端发送一个<code>Client Hello</code>消息，包含TLS版本号，客户端随机数，支持密码条件表。<br>
+<em><strong>TLS第二次握手</strong></em><br>
+服务端收到客户端打招呼，会返回<code>Server Hello</code>消息，服务器回确认TLS版本号，服务器的随机数，以及服务端选择的密码套件。<br>
+服务器为什么证明自己身份，会下发证书给客户端，因为服务器选择ECDHE密钥协商算法，发送完证书后，发送Server Key Exchange消息，包含椭圆曲线公钥。最后返回Server Hello Done。<br>
+<em><strong>TLS第三次握手</strong></em><br>
+客户端根据自己的随机数，生成椭圆曲线公钥，发送给服务器，这个时候双方都能计算出最终的会话密钥。<br>
+然后客户端发送<code>Change Cipher Spec</code>，告知双方加密通信。<br>
+最后客户端吧之前发的数据加密做一个加密，给服务器验证。<br>
+<em><strong>TLS第四次握手</strong></em><code>Change Cipher Spec</code>，告知双方加密通信，然后也把之前发的数据加密，给客户端验证。（验证双方解密能力，防止数据中间被人篡改比如明文数据）<br>
+这个问题中间被人篡改明文信息被TLS1.3解决一部分，就是开头猜测对方使用椭圆算法，把自己生成椭圆密钥发过去了，对方收到直接生成会话密钥，然后发送自己椭圆密钥，客户端也生成相同会话密钥直接计算。</p>
+<h2 id="35-https如何优化">3.5 HTTPS如何优化</h2>
+<h3 id="会话复用">会话复用</h3>
+<p>第一种叫<code>Sesion ID</code>，这个由服务器保存id值，里面根据id值查到会话密钥，但是这个缺点就是当有几百万个连接，服务器内存消耗太大。<br>
+第二种叫<code>Session Ticket</code>，服务器把缓存任务给了客户端，下一次复用，客户端把服务器生成的Ticket发过来，然后服务器根据自己内部某把密钥解开这个，获得会话密钥。这两种方法都有前向危机。因为拿到这个Ticket密钥可以解出来会话密钥，此时ECDHE算法优势荡然无存。<br>
+TLS1.3直接重连的时候，把HTTP请求和Ticket直接一起发送，0RTT延迟，上面还有一个RTT延时。但是这里有<em><strong>重放攻击</strong></em>危险，假如一个POST请求，在这里不断重发数这里重连+POST的数据包，然后服务器没检验直接出问题。避免重放攻击就是给对话密钥设定一个合理过期时间。</p>
+<h3 id="证书优化">证书优化</h3>
+<p>服务器精良选用ECDSA证书而不是RSA证书，相同安全级别ECDSA密钥长度比RSA短，证书传输效率提高。<br>
+服务器开始<code>OCSP Stapling</code>功能，服务器每隔一段时间获得OCSP响应，然后跟证书一起发给客户端，客户端就知道这个网站有效时间。</p>
+<h2 id="http2优化方面">HTTP2优化方面</h2>
+<h3 id="静态表编码">静态表编码</h3>
+<p>HTTP/2位高频出现在头部字符串和字段建立一张静态表，公有61组。<br>
+<img src="https://dss544.github.io/post-images/1793150893698.png" alt="" loading="lazy"><br>
+如果头部字段属于静态表范围，value是变化的，那么它的HTTP/2头部前2位固定为<code>01</code>，头部格式如下<br>
+<img src="https://dss544.github.io/post-images/1793167229073.png" alt="" loading="lazy"><br>
+通常是一个请求先发一个HEADERS帧，接着后面跟着一个或多个DATA帧。比如一下这样，根据Type区分，如果0x01代表我是HEADERS帧，如果是0x00代表DATA帧。这里的Length仅仅代表当前这个帧的载荷大小，不代表整个请求/文件大小。不过HEADERS帧的Payload必须使用HPACK废，二DATA帧的Payload就是原始数据流（虽然从HTTP/1.1时代就会握手双方握手协商压缩算法，但一般不用）。</p>
+<pre><code class="language-c">[Stream 1: HEADERS 帧]
+[Stream 1: DATA 帧 1]
+[Stream 3: HEADERS 帧]  &lt;-- 穿插进来了另一个请求 Stream 3！
+[Stream 1: DATA 帧 2]
+[Stream 3: DATA 帧 1]
+[Stream 1: DATA 帧 3]
+</code></pre>
+<p>HTTP/2二进制帧结构如下图，固定9字节大小：<br>
+<img src="https://dss544.github.io/post-images/1793169791204.png" alt="" loading="lazy"><br>
+帧长度代表payload大小，该次传输总大小位payload+9，帧长度后第一个字节hi帧的类型，HTTP/2定义了10种类型的帧：<br>
+<img src="https://dss544.github.io/post-images/1793170495495.png" alt="" loading="lazy"><br>
+帧类型后面是一个标志位，保存8个标志，比如：<br>
+<em><strong>END_HEADERS</strong></em> 表示头数据结束标志，相当于 HTTP/1 里头后的空行（“\r\n”）；<br>
+<em><strong>END_Stream</strong></em> 表示单方向数据发送结束，后续不会再有数据帧。<br>
+<em><strong>PRIORITY</strong></em> 表示流的优先级；<br>
+帧头最后是流标识符，最高位不用，一共4字节，表示这个Frame数以那个stream，最后存放通过HPACK算法压缩过的HTTP头部（不压缩包体）。</p>
+<h2 id="http3优化方面">HTTP3优化方面</h2>
+<figure data-type="image" tabindex="3"><img src="https://dss544.github.io/post-images/1793173976065.png" alt="" loading="lazy"></figure>
+<h3 id="无队头阻塞">无队头阻塞</h3>
+<p>QUIC协议类似HTTP/2 Stream与多路复用，但底层的QUIC使用的是UDP（消除了传输层头部阻塞）。</p>
+<h3 id="更快连接建立">更快连接建立</h3>
+<p>HTTP1/2都需要tcp三次握手TLS四次握手，而HTTP/3传输数据只要QUIC握手，只要一个RTT，因为它支持椭圆算法，第一次就传输过去密钥等待混合。</p>
+<h3 id="更快连接迁移">更快连接迁移</h3>
+<p>TCP基于四元组，如果从4G切换成WIFI，IP地址变了要重连，然后TCP慢启动，但是QUIC直接通过连接ID标记两个端点，就算IP变了，ID，TLS密钥还在迅速重连。<br>
+HTTP2/3格式如下：<br>
+<img src="https://dss544.github.io/post-images/1793175183073.webp" alt="" loading="lazy"><br>
+QUIC在传输层定义了专门的STRAM帧，结构如下：</p>
+<pre><code class="language-c">+-------------------------------------------------------------+
+|   QUIC 帧类型 (STREAM Frame，自带 OFF、LEN、FIN 标志位)     |
++-------------------------------------------------------------+
+|   Stream ID (变长，由 QUIC 负责维护)                        |
++-------------------------------------------------------------+
+|   Offset    (流内偏移量，负责解决丢包乱序)                  |
++-------------------------------------------------------------+
+|   Length    (数据长度)                                      |
++-------------------------------------------------------------+
+|   Stream Data (这里面放的才是你的 HTTP/3 帧！)              |
++-------------------------------------------------------------+
+</code></pre>
+<p>但是有一个问题，头部信息用动态表，HTTP2严格按照tcp顺序，所以用表没问题比如useragent，但是HTTP3是UDP，可能先传useragent的没到，但是后面已经要用这个索引了，这时候就会卡住。<br>
+为了解决这个问题，QUIC建立转悠电报，叫Encoder Stream（编码单向流）：专门用来发“字典更新指令”。   Decoder Stream（解码单向流）：专门用来回“确认已同步”。<br>
+客户端通过Encoder Stream单独发送插入表指令，比如插入useragent，然后服务器收到，通过Decoder Stream回复。后面服务器就可以用这个索引给各个流发送信息了。<br>
+***如果客户端“等不及”服务器确认怎么办？***这里还有一个细节：如果客户端每加一个动态表都要等服务器回确认，那不就多浪费了一个往返时延（RTT）吗？QPACK 非常灵活，支持两种模式：<br>
+保守模式（零阻塞保证）：严格等 Decoder Stream 回了 ACK 确认后，业务流才开始使用该表项（彻底消灭队头阻塞）。<br>
+激进模式（带风险推测）：客户端直接在 Encoder Stream 刚发完表项后，就立即在业务流里引用。如果此时网络一切正常，享受极高压缩率；如果发生了丢包，QPACK 规定仅阻塞引用了该表项的具体某一个流，其他没有引用该表项的普通流（比如只引用静态表的流）依然全速运行，绝不连带卡死。</p>
+<h2 id="http存在了为什么还要有rpc和websocket">HTTP存在了为什么还要有RPC和WebSocket</h2>
+<p>大部分RPC和WebSocket底层都是tcp，HTTP1/2/3都是请求-响应模型，就算服务器主动推送也是你先申请资源。</p>
+<pre><code class="language-c">struct iphdr {
+    // 这里是保证物理上高4位永远是version
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	__u8	ihl:4,  // IP 头部长度 一般为5代表4*5是20字节
+		version:4;  //  IP协议版本 IPv4则为4
+#elif defined (__BIG_ENDIAN_BITFIELD)
+	__u8	version:4,
+  		ihl:4;
+#else
+#error	&quot;Please fix &lt;asm/byteorder.h&gt;&quot;
+#endif
+	__u8	tos;            // 服务类型
+	__be16	tot_len;    // 总长度。IP 头部 + 传输层（TCP/UDP）+ 应用层数据
+	__be16	id;            // 标识符ID
+	__be16	frag_off; // - 标志位 + 分片偏移（Fragment Offset）。高 3 位是 Flags（包括前面提到的 DF 位禁止分片、MF 位(最后一个数据，除了最后一个数据，其他载荷长度至少是8字节倍数)还有后续分片）；低 13 位是偏移量（以 8 字节为单位），记录该分片在原始大包中的位置。
+	__u8	ttl;    // 生存时间 
+	__u8	protocol; // 上层协议号 剥离IP头交给谁？ 6代表TCP 17代表UDP 1代表ICMP
+	__sum16	check;  // 头部校验和 只校验IP头其他不校验 16 位反码求和校验和
+	__be32	saddr; // 源 IP 地址
+	__be32	daddr; // 目的 IP 地址
+	/*The options start here.  20字节头部*/
+};
+</code></pre>
+<p>tcp结构体头部如下</p>
+<pre><code class="language-c">struct tcphdr {
+	__be16	source;    // 源端口号
+	__be16	dest;        // 目的端口号
+	__be32	seq;         //  序列号
+	__be32	ack_seq;  //  确认号  
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	__u16	res1:4,  // 保留的
+		doff:4,  // 数据偏移 一般值为5 4*5就是20字节（头部长度）                   
+		fin:1,  // 释放连接
+		syn:1, //  同步序号
+		rst:1,  //  复位连接
+		psh:1, //  急迫推送 不要等待缓冲区满 直接立即推送给应用程序
+		ack:1, // 确认有效
+		urg:1, // 紧急
+		ece:1, // 显示阻塞 不用通过丢包来感知拥塞                         
+		cwr:1;
+/*
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	__u16	doff:4,
+		res1:4,
+		cwr:1,
+		ece:1,
+		urg:1,
+		ack:1,
+		psh:1,
+		rst:1,
+		syn:1,
+		fin:1;
+*/
+#else
+#error	&quot;Adjust your &lt;asm/byteorder.h&gt; defines&quot;
+#endif	
+	__be16	window;         // 窗口大小
+	__sum16	check;          // 校验和 16 位反码求和校验和（带伪首部校验）
+	__be16	urg_ptr;        //  紧急指针 仅在 urg=1 代表经济数据在载荷中位置
+};
+/* 常规20字 后面可带option节 */
+</code></pre>
+<p>ICMP结构体头</p>
+<pre><code class="language-c">struct icmphdr
+{
+  uint8_t type;		/* message type */
+  uint8_t code;		/* type sub-code */
+  uint16_t checksum;
+  union
+  {
+    struct
+    {
+      uint16_t	id;
+      uint16_t	sequence;
+    } echo;			/* echo datagram */
+    uint32_t	gateway;	/* gateway address */
+    struct
+    {
+      uint16_t	__glibc_reserved;
+      uint16_t	mtu;
+    } frag;			/* path mtu discovery */
+  } un;
+};
+</code></pre>
+<h1 id="wiresharsk实验篇">wiresharsk实验篇</h1>
+<h1 id="二刷">二刷</h1>
+<h2 id="43">4.3</h2>
+<p>握手阶段的重试由 tcp_syn_retries（客户端）和 tcp_synack_retries（服务端）控制；</p>
+<h3 id="各个重传参数">各个重传参数</h3>
+<p>连接建立（ESTABLISHED）后的数据段重传，则完全交给 tcp_retries1（网络有问题找其他可达路径最大次数） 和 tcp_retries2(发送数据收不到ack最大重复多少)。<br>
+当重传次数超过tcp_retries1就会指示 IP 层进行 MTU 探测、刷新路由等过程，并不会断开TCP连接，当重传次数超过 tcp_retries2 才会断开TCP流。tcp_retries1 和 tcp_retries2 两个重传次数都是受一个 timeout 值限制的，timeout 的值是根据它俩的值计算出来的，当重传时间超过 timeout，就不会继续重传了，即使次数还没到达。</p>
+<p>tcp_orphan_retries是控制主动方发送FIN报文么接收到ACK参数最大次数，正常状态下应该数十毫秒内从FIN_WAIT1变为FIN_WAIT2。<br>
+SYN被丢弃情况：<br>
+如果半连接队列满了，并且没有开启 tcp_syncookies，则会丢弃；<br>
+若全连接队列满了，且没有重传 SYN+ACK 包的连接请求多于 1 个（有新连接在半连接队列里），则会丢弃；tcp_abort_on_overflow = 1开启了这个直接返回RST<br>
+避免SYN攻击<br>
+1、增大半连接队列。2、开启tcp_syncookies功能。3、减少SYN+ACK重传次数。</p>
+<p><em><strong>丢弃SYN信号：</strong></em><br>
+为了让TIME_WAIT状态连接被快速回收，开启了两个。<code>net.ipv4.tcp_tw_reuse</code>开启的花，相同四元组连接直接看上一次这个连接TIME_WAIT是否持续1秒，如果是就重用这个。<br>
+<code>net.ipv4.tcp_tw_recycle</code>现在不推荐使用，因为NAT下可能因为各个机器开机时间不一致导致连接不了，比如机器A时间1000，机器B时间100，他们经过NAT都是相同ip出去，但这个不检验你的端口只看ip，他认为1000就是最新时间，100就是旧包。这两个都要开启TCP时间戳。</p>
+<p>半连接队列满了，会丢弃syn，除非开启cookies。全连接满了直接丢弃ack信号或者直接rst，全连接满了哪怕半连接没满也会直接丢弃syn</p>
+<p><em><strong>客户端掉线，上线继续发SYN给服务端</strong></em><br>
+客户端发送SYN端口号不一样，四元组自然不同，可以连接，原本连接可通过保活机制或者服务器发送数据客户端返回RST终止。<br>
+客户端发送SYN端口号一样，四元组一样，客户端返回上一次正常的seq和ack，结果客户端不认识直接rst。</p>
+<p>在TIME_WAIT状态，如果出现SYN信号，必须判断seq和timestamp都大于上一次的，或者只有seq大于（没有开启时间戳）</p>
+<p><em><strong>什么时候四次挥手变成三次</strong></em><br>
+没有数据要发送给客户端或者开启TCP 延迟确认机制</p>
+<p><em><strong>NAT缺点和解决方案</strong></em><br>
+缺点：一断电路由表丢失，路由表增改有开销，外部无法连接设备，只能等设备来连接。<br>
+解决方案：使用ipv6，使用NAT穿透技术（将这个映射给设备，就相当于NAT只做转发）</p>
+<p>127.0.0.1 是回环地址。localhost是域名，但默认等于 127.0.0.1<br>
+ping 回环地址和 ping 本机地址，是一样的，走的是lo0 &quot;假网卡&quot;，都会经过网络层和数据链路层等逻辑，最后在快要出网卡前狠狠拐了个弯，数据插入到一个链表后就软中断通知 ksoftirqd 来进行收数据的逻辑，压根就不出网络。所以断网了也能 ping 通回环地址。<br>
+如果服务器 listen 的是 0.0.0.0，那么此时用127.0.0.1和本机地址都可以访问到服务。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E7%90%86%E8%AE%BA%E7%AF%87">理论篇</a>
+<ul>
+<li><a href="#%E8%AE%BF%E9%97%AE%E7%BD%91%E7%AB%99%E5%85%A8%E6%B5%81%E7%A8%8B">访问网站全流程</a></li>
+<li><a href="#tcpip%E7%BD%91%E7%BB%9C%E6%A8%A1%E5%9E%8B">TCP/IP网络模型</a></li>
+<li><a href="#41-tcp%E5%A6%82%E4%BD%95%E8%BF%9E%E6%8E%A5">4.1 TCP如何连接</a>
+<ul>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88tcp%E8%A6%81%E4%B8%89%E6%AC%A1%E6%8F%A1%E6%89%8B%E8%80%8C%E4%B8%8D%E6%98%AF%E5%9B%9B%E6%AC%A1%E4%B8%A4%E6%AC%A1">为什么tcp要三次握手，而不是四次，两次？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E6%AF%8F%E6%AC%A1tcp%E8%BF%9E%E6%8E%A5%E6%97%B6%E5%88%9D%E5%A7%8B%E5%8C%96%E5%BA%8F%E5%88%97%E5%8F%B7%E4%B8%8D%E4%B8%80%E6%A0%B7">为什么每次TCP连接时，初始化序列号不一样？</a></li>
+<li><a href="#%E6%97%A2%E7%84%B6ip%E4%BC%9A%E5%88%86%E7%89%87%E4%B8%BA%E4%BB%80%E4%B9%88tcp%E5%B1%82%E8%BF%98%E9%9C%80%E8%A6%81mss">既然IP会分片，为什么TCP层还需要MSS？</a></li>
+<li><a href="#%E6%8F%A1%E6%89%8B%E4%BF%A1%E5%8F%B7%E7%BC%BA%E5%A4%B1">握手信号缺失</a></li>
+<li><a href="#syn%E6%94%BB%E5%87%BB">SYN攻击</a></li>
+</ul>
+</li>
+<li><a href="#tcp%E5%A6%82%E4%BD%95%E6%96%AD%E5%BC%80">TCP如何断开</a>
+<ul>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E6%8C%A5%E6%89%8B%E9%9C%80%E8%A6%81%E5%9B%9B%E6%AC%A1">为什么挥手需要四次？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81-time_wait-%E7%8A%B6%E6%80%81">为什么需要 TIME_WAIT 状态？</a></li>
+</ul>
+</li>
+<li><a href="#42-tcp%E9%87%8D%E4%BC%A0">4.2 TCP重传</a>
+<ul>
+<li><a href="#%E8%B6%85%E6%97%B6%E9%87%8D%E4%BC%A0">超时重传：</a></li>
+<li><a href="#%E5%BF%AB%E9%80%9F%E9%87%8D%E4%BC%A0">快速重传：</a></li>
+<li><a href="#%E6%BB%91%E5%8A%A8%E7%AA%97%E5%8F%A3">滑动窗口：</a></li>
+<li><a href="#%E7%AA%97%E5%8F%A3%E5%85%B3%E9%97%AD">窗口关闭</a></li>
+<li><a href="#%E7%B3%8A%E6%B6%82%E7%AA%97%E5%8F%A3%E7%BB%BC%E5%90%88%E5%BE%81">糊涂窗口综合征</a></li>
+<li><a href="#%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6">拥塞控制</a></li>
+</ul>
+</li>
+<li><a href="#43-%E6%8A%93%E5%8C%85%E5%88%86%E6%9E%90">4.3 抓包分析</a></li>
+<li><a href="#44-%E5%8D%8A%E8%BF%9E%E6%8E%A5%E9%98%9F%E5%88%97%E5%92%8C%E5%85%A8%E8%BF%9E%E6%8E%A5%E9%98%9F%E5%88%97">4.4 半连接队列和全连接队列</a>
+<ul>
+<li><a href="#45">4.5</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E4%BB%A3%E7%A0%81%E7%AF%87">代码篇</a><br>
+*
+<ul>
+<li><a href="#46">4.6</a></li>
+<li><a href="#47">4.7</a></li>
+<li><a href="#48">4.8</a></li>
+<li><a href="#49">4.9</a></li>
+<li><a href="#410">4.10</a></li>
+<li><a href="#411">4.11</a></li>
+<li><a href="#412">4.12</a></li>
+<li><a href="#413">4.13</a></li>
+<li><a href="#414">4.14</a></li>
+<li><a href="#417">4.17</a></li>
+<li><a href="#419">4.19</a></li>
+<li><a href="#421">4.21</a></li>
+<li><a href="#422">4.22</a></li>
+<li><a href="#423">4.23</a></li>
+<li><a href="#424">4.24</a></li>
+<li><a href="#ip">IP</a>
+<ul>
+<li><a href="#ip%E7%9A%84%E5%88%86%E7%B1%BB">IP的分类</a></li>
+<li><a href="#ipv6-%E5%9F%BA%E6%9C%AC%E8%AE%A4%E8%AF%86">IPv6 基本认识</a></li>
+<li><a href="#arprarp%E5%8D%8F%E8%AE%AE">ARP/RARP协议</a></li>
+<li><a href="#dhcp%E5%8D%8F%E8%AE%AE">DHCP协议</a></li>
+<li><a href="#nat">NAT</a></li>
+<li><a href="#icmp">ICMP</a></li>
+<li><a href="#igmp">IGMP</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#http">HTTP</a>
+<ul>
+<li><a href="#http%E5%B8%B8%E7%94%A8%E5%AD%97%E6%AE%B5">HTTP常用字段</a>
+<ul>
+<li><a href="#http%E7%BC%93%E5%AD%98">HTTP缓存</a></li>
+</ul>
+</li>
+<li><a href="#http11%E4%BC%98%E7%BC%BA%E7%82%B9">HTTP/1.1优缺点</a></li>
+<li><a href="#https%E8%A7%A3%E5%86%B3%E4%BA%86http%E5%93%AA%E4%BA%9B%E9%97%AE%E9%A2%98">HTTPS解决了HTTP哪些问题</a></li>
+<li><a href="#tls%E6%8F%A1%E6%89%8B">TLS握手</a></li>
+<li><a href="#https%E7%9A%84%E5%BA%94%E7%94%A8%E6%95%B0%E6%8D%AE%E5%A6%82%E4%BD%95%E4%BF%9D%E8%AF%81%E5%AE%8C%E6%95%B4%E6%80%A7tls%E8%AE%B0%E5%BD%95%E5%8D%8F%E8%AE%AE">HTTPS的应用数据如何保证完整性（TLS记录协议）</a></li>
+<li><a href="#http2">HTTP2</a></li>
+<li><a href="#http3">HTTP3</a></li>
+<li><a href="#%E5%A6%82%E4%BD%95%E5%87%8F%E5%B0%91http%E8%AF%B7%E6%B1%82%E6%AC%A1%E6%95%B0">如何减少HTTP请求次数？</a>
+<ul>
+<li><a href="#%E7%BC%93%E5%AD%98%E6%8A%80%E6%9C%AF">缓存技术</a></li>
+<li><a href="#%E9%87%8D%E5%AE%9A%E5%90%91">重定向</a></li>
+<li><a href="#%E5%90%88%E5%B9%B6%E8%AF%B7%E6%B1%82">合并请求</a></li>
+<li><a href="#%E5%BB%B6%E8%BF%9F%E5%8F%91%E9%80%81%E8%AF%B7%E6%B1%82">延迟发送请求</a></li>
+</ul>
+</li>
+<li><a href="#%E5%A6%82%E4%BD%95%E5%87%8F%E5%B0%91http%E5%93%8D%E5%BA%94%E6%95%B0%E6%8D%AE%E5%A4%A7%E5%B0%8F">如何减少HTTP响应数据大小</a>
+<ul>
+<li><a href="#%E6%97%A0%E6%8D%9F%E5%8E%8B%E7%BC%A9">无损压缩</a></li>
+<li><a href="#%E6%9C%89%E6%8D%9F%E5%8E%8B%E7%BC%A9">有损压缩</a></li>
+</ul>
+</li>
+<li><a href="#34-https-echde%E6%8F%A1%E6%89%8B%E8%A7%A3%E6%9E%90">3.4 HTTPS ECHDE握手解析</a>
+<ul>
+<li><a href="#dh%E7%AE%97%E6%B3%95">DH算法</a></li>
+<li><a href="#dhe%E7%AE%97%E6%B3%95">DHE算法</a></li>
+<li><a href="#ecdhe%E7%AE%97%E6%B3%95">ECDHE算法</a></li>
+</ul>
+</li>
+<li><a href="#35-https%E5%A6%82%E4%BD%95%E4%BC%98%E5%8C%96">3.5 HTTPS如何优化</a>
+<ul>
+<li><a href="#%E4%BC%9A%E8%AF%9D%E5%A4%8D%E7%94%A8">会话复用</a></li>
+<li><a href="#%E8%AF%81%E4%B9%A6%E4%BC%98%E5%8C%96">证书优化</a></li>
+</ul>
+</li>
+<li><a href="#http2%E4%BC%98%E5%8C%96%E6%96%B9%E9%9D%A2">HTTP2优化方面</a>
+<ul>
+<li><a href="#%E9%9D%99%E6%80%81%E8%A1%A8%E7%BC%96%E7%A0%81">静态表编码</a></li>
+</ul>
+</li>
+<li><a href="#http3%E4%BC%98%E5%8C%96%E6%96%B9%E9%9D%A2">HTTP3优化方面</a>
+<ul>
+<li><a href="#%E6%97%A0%E9%98%9F%E5%A4%B4%E9%98%BB%E5%A1%9E">无队头阻塞</a></li>
+<li><a href="#%E6%9B%B4%E5%BF%AB%E8%BF%9E%E6%8E%A5%E5%BB%BA%E7%AB%8B">更快连接建立</a></li>
+<li><a href="#%E6%9B%B4%E5%BF%AB%E8%BF%9E%E6%8E%A5%E8%BF%81%E7%A7%BB">更快连接迁移</a></li>
+</ul>
+</li>
+<li><a href="#http%E5%AD%98%E5%9C%A8%E4%BA%86%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%98%E8%A6%81%E6%9C%89rpc%E5%92%8Cwebsocket">HTTP存在了为什么还要有RPC和WebSocket</a></li>
+</ul>
+</li>
+<li><a href="#wiresharsk%E5%AE%9E%E9%AA%8C%E7%AF%87">wiresharsk实验篇</a></li>
+<li><a href="#%E4%BA%8C%E5%88%B7">二刷</a>
+<ul>
+<li><a href="#43">4.3</a>
+<ul>
+<li><a href="#%E5%90%84%E4%B8%AA%E9%87%8D%E4%BC%A0%E5%8F%82%E6%95%B0">各个重传参数</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/eplan/">
+              <h3 class="post-title">
+                eplan
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

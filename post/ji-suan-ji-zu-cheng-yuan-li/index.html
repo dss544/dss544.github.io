@@ -1,0 +1,1086 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>计算机组成原理 | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="计算机组成原理 | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="#1、系统漫游
+switch当case 是稠密、连续整数，编译器会自动生成跳转表数组，时间O（1），当非稠密的非连续数组，就和if-else完全等价。
+uintptr_t 这个是直接加，比如a地址0x001；我uintptr_t ptr =..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              计算机组成原理
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-09-07
+              </span>
+              <span>
+                47 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>#1、系统漫游<br>
+switch当case 是稠密、连续整数，编译器会自动生成跳转表数组，时间O（1），当非稠密的非连续数组，就和if-else完全等价。</p>
+<p>uintptr_t 这个是直接加，比如a地址0x001；我uintptr_t ptr = (uintptr_t)&amp;a; ptr&amp; ~(PAGE_SIZE - 1);就是向下对齐，这个可以直接与或非操作，但是unsigned int* 不可以，还有这个变量+1就是直接+1不是跳几个字节。</p>
+<p>十进制数字0-9正好对应0x30-0x39</p>
+<p>判断x==y 等于就返回1 就是~(x^y)，下面这个代码 不会出现定时侧信道攻击，如果直接memcpy容易被测出时间差导致出问题。</p>
+<pre><code class="language-c">int safe_memcmp(const uint8_t *a, const uint8_t *b, size_t len) {
+    uint8_t diff = 0;
+    for (size_t i = 0; i &lt; len; i++) {
+        diff |= (a[i] ^ b[i]);
+    }
+    return !diff;
+}
+</code></pre>
+<h2 id="2">2</h2>
+<p>补码的二进制，最高位表示-1权重，其他还是1，然后按照二进制相加，比如1001，就是-1*8+1=-7<br>
+如果比如一个char c = -15 long a = (long)c，这里会自动对c高位补1，因为c原本等于0x8f（源码），补码就是0xf1，最高位权重是-2^7，这是会补1 就是-2<sup>63+2</sup>62+...2<sup>7根据等比公式求出来还是-2</sup>7.<br>
+有符号数转化为无符号,假如是w位数 T2Uw(x)=(x &lt; 0) ?  x+2^w : x;<br>
+无符号转化为有符号 U2Tw(x)=(u &lt; 2^(w-1)) ? x : x-2^w;</p>
+<p>float：符号位1 指数 8  总共32位置<br>
+double：符号位1 指数11 总共64位置</p>
+<p>c++有一个特性叫特征萃取，跟传统模板不一样，他能改变参数，具体格式如下：</p>
+<pre><code class="language-c++">// 定义模板 一个模板名和数据结构体
+template &lt;typename T&gt;
+struct TypeInfo;
+// 具体类型 比如int
+template &lt;&gt;
+struct TypeInfo&lt;int&gt; {
+    static constexpr const char* name = &quot;32-bit Integer&quot;;
+};// // 具体类型 比如double
+template &lt;&gt;
+struct TypeInfo&lt;double&gt; {
+    static constexpr const char* name = &quot;64-bit Double Float&quot;;
+};// 开始使用
+template &lt;typename T&gt;
+void inspect_type(T value) {
+    std::cout &lt;&lt; &quot;Type Name: &quot; &lt;&lt; TypeInfo&lt;T&gt;::name &lt;&lt; std::endl;
+}
+</code></pre>
+<p>判断一个二进制中，数字1的个数是偶数个还是奇数个。</p>
+<pre><code class="language-c"></code></pre>
+<p>很多硬件其实帮助我们做了很多事情，比如8位数字中1个数是奇数还是偶数，然后进位信号，只要读取寄存器就像，下面是一个判断进位的标志加法，carry是进位置。</p>
+<pre><code class="language-c">unsigned int add_with_carry(unsigned int a, unsigned int b, unsigned char *carry) {
+    unsigned int sum = b; // 先把 b 赋给 sum，作为相加的底数
+    unsigned char c;
+    __asm__ (
+        &quot;addl %[in_a], %[out_sum]\n\t&quot;  // out_sum = out_sum + in_a
+        &quot;setc %[out_c]\n\t&quot;             // 如果产生无符号进位(CF=1)，out_c 设为 1，否则 0
+        : [out_sum] &quot;+r&quot; (sum),         // &quot;+&quot; 表示该寄存器可读可写：执行前读入初始值，执行后写回 sum
+          [out_c]   &quot;=r&quot; (c)            // &quot;=&quot; 表示只写输出
+        : [in_a]    &quot;r&quot;  (a)            // &quot;r&quot; 表示输入变量 a
+        : &quot;cc&quot;                          // 通知编译器修改了条件标志位
+    );
+    *carry = c;
+    return sum;
+}
+</code></pre>
+<p>x86-64操作数寄存器（rip就是pc指针）<br>
+<img src="https://dss544.github.io/post-images/1789351480815.png" alt="" loading="lazy"></p>
+<p>x86-64汇编操作数格式 下面举例说明<br>
+<img src="https://dss544.github.io/post-images/1789352316598.png" alt="" loading="lazy"></p>
+<pre><code class="language-c">立即数寻址      movq $100, %rdx 把常数0x100放入寄存器%rdx  long y = 256;
+
+寄存器寻址      movq %rax, %rdx 把%rax里面的值复制给%rdx long y = x;
+
+绝对寻址          mov1  0x601000, %rdx 在内存地址0x601000读取8字节给rdx long y = global_val;
+
+比例地址寻址：Imm(r_b, r_i, s) 有效地址为 Imm+r_v+r_i*s
+比如movl 12(%rax, %rcx, 4), %edx 有效地址是 $12 + 0x1000 + 4 \times 4 = \mathbf{0x101C}$。
+</code></pre>
+<p>c语言小数转大数看源类型，源类型有符号就符号扩展（补最高位）；源类型无符号就零扩展（补 0）。<br>
+大转小只看低位，只保留低位8字节。<br>
+c语言移动要看数据类型位宽，移位量是一个立即数(可变参数)放在%cl中，一般根据数据类型取他多少位，比如插入就取低三位，int就取5位，所以一个变量&lt;&lt;32其实没变化，疑问低5位都是0，但这属于未定义行为。</p>
+<p>左移: SAL,SHL （功能一样）&lt;&lt;  右移: SAR算数（补符号位），SHR逻辑 &gt;&gt;<br>
+在cmp指令后，会出现跳转，跳转的就在这里<br>
+j = Jump（跳转）<br>
+z = Zero（零，对应标志位 ZF = 1）<br>
+e = Equal（相等，本质上就是结果为 0，即 ZF = 1）<br>
+s = Sign / Signed（有符号负数，对应符号标志位 SF = 1）<br>
+n = Not（取反，不满足某条件）<br>
+g = Greater（大于，用于有符号数）<br>
+l = Less（小于，用于有符号数）<br>
+a = Above（大于，用于无符号数）<br>
+b = Below（小于，用于无符号数）</p>
+<p>汇编代码里的跳转目标，是考cpu用下一条指令地址（pc）+偏移量计算出来的<br>
+有些寄存器随便写，有些调用者保存，有些被调用者保存，子函数优先使用调用者保存寄存器，只有寄存器不够了才拿被调用者保存寄存器使用。对局部变量使用了&amp;，他就不能放在寄存器里面了，还有局部数组也是，必须放在栈上。</p>
+<p>对于leaq 10(%rdi, %rsi, 4), %rax # rax = rdi + rsi * 4 + 10，如果是movq的化，不仅计算内存地址，还要进行取值。<br>
+结构体成员从大到小排，能解决大多数情况不对齐占空间的问题，因为大数据类型永远是小数据类型的倍数。</p>
+<p>函数指针的值是机器代码中第一条指令的地址。</p>
+<p>gdb命令<br>
+<img src="https://dss544.github.io/post-images/1789883235210.png" alt="" loading="lazy"></p>
+<p>浮点寄存器<br>
+<img src="https://dss544.github.io/post-images/1789908432776.png" alt="" loading="lazy"></p>
+<p>浮点传输指令<br>
+<img src="https://dss544.github.io/post-images/1789952035255.png" alt="" loading="lazy"></p>
+<pre><code class="language-c">long     -&gt; double  vcvtsi2sdq %rdi, %xmm0, %xmm0
+double -&gt; int         vcvttsd2si %xmm0, %eax
+double -&gt; float      vcvtsd2ss %xmm0, %xmm0, %xmm0
+long     -&gt; float      vcvtsi2ssq %rdi, %xmm0, %xmm0
+float     -&gt; long      vcvttss2siq %xmm0, %rax
+</code></pre>
+<h3 id="3">3</h3>
+<p>cmov与je不同，他会把选择两边的计算结果都算出来，所以选择快不会出现流水线清空。<br>
+原 C 代码中没有定义 case 61，编译器处理缺失的中间数字时，会直接把跳转表该位置填充为 default 的地址 0x4005c3<br>
+一级缓存有数据缓存指令缓存，指令缓存可以用likely，然后先排序后判断更快，在对一个随机数据比如链表，下一个节点可以预取，然后在对当前节点计算。<br>
+对于计算密集型，可以把这个线程绑定到某个cpu核心防止切换杯换到其他cpu核心，因为各个cpu的cacheline1和cacheline2是独享的。</p>
+<p>各个调度器策略如下：<br>
+<img src="https://dss544.github.io/post-images/1793194077581.png" alt="" loading="lazy"></p>
+<p>mmap申请可以通过加标志位立即申请内存锁定（mlockall），也可以mlockall设置属性让该进程内存停驻在内存不换出。</p>
+<h3 id="内存管理">内存管理</h3>
+<p>内存直接分段，比如浏览器占128MB，游戏256MB，音乐占64。当事方浏览器和音乐中间隔着游戏无法合并，虽然内部紧凑但是外部存在内存碎片，一旦产生外部内存碎片，就要通过硬盘上的swap空间进行换入换出导致效率低。</p>
+<h3 id="5">5</h3>
+<p><strong>attribute</strong>((const))或者__attribute__((pure)) 告诉编译器这个函数没·有副作用，编译器也只会调用 1 次并乘以 2，比如func()+func()直接变成func()*2;</p>
+<p>规律极强的分支，跑几次cpu就能知道他很容易执行，不会为了什么极致性能删除安全检查，真正麻烦的是不可预测随机分支。</p>
+<p>读在前，写在后或者读写完全不沾边效率高，先写在读效率低下，因为接下来指令需要把这个地址新值读出来，卡住流水线。代码示例如下：</p>
+<pre><code class="language-c">void smooth_bad(long *arr, long n) {
+    for (long i = 1; i &lt; n; i++) {
+        // 第 i 轮：把新值写入 arr[i]
+        arr[i] = (arr[i] + arr[i - 1]) / 2
+        // 🚨 灾难发生了：
+        // 当循环进入第 i + 1 轮时，CPU 必须立刻读取 arr[i]！
+        // 这一轮的 Load 必须死等上一轮的 Store 转发数据，跨迭代形成死锁链。
+    }
+}
+void smooth_good(long *arr, long n) {
+    long prev = arr[0]; // 提前把旧值读入寄存器
+    
+    for (long i = 1; i &lt; n; i++) {
+        long curr = arr[i];          // 1. 【先读】提前把原数组的旧值捞进寄存器
+        arr[i] = (curr + prev) / 2;  // 2. 【后写】写入新值到内存，单向发射进写缓冲区
+        prev = curr;                 // 3. 将原旧值流转给下一轮（纯寄存器赋值，0 延迟）
+    }
+}
+
+
+typedef struct {
+    long x, y;
+    long vx, vy;
+} Particle;
+
+void update_particles_bad(Particle *p, long n) {
+    for (long i = 0; i &lt; n; i++) {
+        // 1. 先写内存：更新速度
+        p[i].vx += 5; 
+        // 2. 紧接着读内存：利用刚写进去的速度更新位置
+        // 编译器生成汇编：先 Store vx 到结构体，紧接着下一条指令又 Load vx 出去算位置！
+        p[i].x += p[i].vx; 
+    }
+}
+void update_particles_good(Particle *p, long n) {
+    for (long i = 0; i &lt; n; i++) {
+        // 1. 【先读】把数据一口气读入局部变量（寄存器）
+        long vx = p[i].vx + 5;
+        long x  = p[i].x + vx; // 直接在寄存器中接力计算，完全不经过内存
+        
+        // 2. 【后写】计算全部完成，一次性扔给写缓冲区
+        p[i].vx = vx;
+        p[i].x  = x;
+    }
+}
+</code></pre>
+<p>###6<br>
+对于cacheline，假如一级只有64字节，读取到一个没访问字节就是比如65，就会把64~127全部读取进来。<br>
+伪共享 ：两个不同的 CPU 核心分别读写两个“在逻辑上毫无关系”的独立变量，但这俩变量在物理内存中恰好挨得太近，被打包塞进了“同一个 64 字节的 Cache Line”里，导致多核硬件缓存一致性协议在后台疯狂打架，性能断崖式暴跌。解决方案放在不同cacheline里面。</p>
+<p>在替换缓存块的时候，有几种策略，比如任意排布每次遍历，或者通过hash分组。一般都是分成几组，然后在组里找，在组里实现类似LRU算法。</p>
+<p>CPU 读取 1 个字节时的硬件三步走：（P426页）<br>
+1、组选择（Set Selection）：硬件用地址中间的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi></mrow><annotation encoding="application/x-tex">s</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">s</span></span></span></span> 位确定组号（Cache Set）。<br>
+2、 行匹配（Line Matching）：硬件并发检查该组里所有行的“有效位（Valid == 1）”与“标记位（Tag 比对）”，如果匹配成功即为命中，锁定具体是哪一行（Line/Way）。<br>
+3、字抽取（Word/Byte Extraction）：最后利用低 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>b</mi></mrow><annotation encoding="application/x-tex">b</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">b</span></span></span></span> 位（如 6 位）作为块内偏移量，从该行 64 字节数据中直接取出那 1 个目标字节返回给寄存器。<br>
+<img src="https://dss544.github.io/post-images/1790732434723.png" alt="" loading="lazy"></p>
+<p>优化程序层次<br>
+业务逻辑与算法架构 -&gt; 访存与内存层次结构 -&gt; 数据并行与向量化 -&gt; 指令级微架构优化 -&gt; 手写纯汇编(基本不用)</p>
+<pre><code class="language-c">下半部需要休眠/阻塞/耗时IO吗？
+                                /        \
+                             是 /          \ 否
+                               /            \
+             现代标准推荐：     /              \  简单轻量：
+        devm_request_threaded_irq()          Tasklet (底层基于 TASKLET_SOFTIRQ)
+       或 工作队列 (Workqueue)
+</code></pre>
+<h3 id="top命令">top命令</h3>
+<p><img src="https://dss544.github.io/post-images/1793234614794.png" alt="" loading="lazy"><br>
+第一行：概览信息</p>
+<pre><code class="language-c">top - 17:50:58(当前时间) up 3 days, 12:10,(已运行3天12小时10分钟)  1 user(1个用户登录),  load average: 0.00, 0.00, 0.00(系统平均负载，过去1分钟、5分钟、15分钟排队任务数)
+</code></pre>
+<p>第二行：任务/进程状态统计</p>
+<pre><code class="language-c">Tasks: 122 total,   1 running,  71 sleeping,   0 stopped,   0 zombie
+</code></pre>
+<p>第三、四行：CPU核心各自的状态<br>
+top运行后按数字1即可显示所有的CPU核心。</p>
+<pre><code class="language-c">%Cpu0 :  0.0 us（用户态程序占比）,  0.0 sy（内核空间占比）,  0.0 ni（改变过优先级用户进程占比）, 96.7 id（空闲时间占比）,  0.0 wa（等待硬盘I/O读写完成消耗时间）,  0.0 hi（处理硬件上半部消耗时间）,  3.3 si（软中断下半部消耗时间）,  0.0 st（一般为0不管）
+</code></pre>
+<p>下方进程列表</p>
+<pre><code class="language-c">PID USER      PR(实际优先级)  NI（nice值）    VIRT（虚拟内存）    RES（物理内存）    SHR（共享内存） S（当权状态 S睡眠 R运行）  %CPU（利用率） %MEM（占用物理内存）     TIME+ COMMAND
+7    root      20   0       0      0      0 S   0.3  0.0   0:01.64 ksoftirqd/0
+16 root      20   0       0      0      0 S   0.3  0.0   0:01.97 ksoftirqd/1
+</code></pre>
+<p>中断下半部会有一个运行时间（默认2ms）以及最大重响应次数（10次），如果超过2ms或者在处理下半部的时候又来了十次，只给给你丢到内核线程。</p>
+<p>CPU中的CR3（x86）寄存器保存进程顶级页表物理基地址，一个页4kb，64位系统，地址8字节。哪一个页表就是4096/8=512项目，每个里面存着4kb的物理基地址，那肯定4096对齐，低12位为0，我就可以用来放权限了。<br>
+每个cpu都有一个mmu，也就独享一个tlb，然后区分不同进程如下，假如cpu0把某个页面改为只读，会触发TLB击落，利用位图cpu_vm_mask_var</p>
+<pre><code class="language-c">现代 TLB 的一行内部结构：
++-----------------+-------------------+-------------------+--------------------+
+|  PCID / ASID  |   虚拟页号 (Tag) |   物理页号 (Data |  权限标志位   |
++-----------------+-------------------+-------------------+--------------------+
+      ▲
+【新增进程 ID 标记】
+</code></pre>
+<h3 id="反向映射理解">反向映射理解</h3>
+<p>那我现在这样说你看对不对 当我malloc的时候 在一个进程里面 他就建立好一个vma了 然后当我触发缺页的时候 他会真实申请page 在页表里面填好这个虚拟地址对应page 然后我的page结构体也会写东西 则个page结构体这个时候是真实存在内存的把？到底算虚拟地址还是物理地址？这个page结构体就指向我这块物理内存 这个时候我就为这一整块vma建立一个anon_vma 说明这个vma都是匿名页 然后我的page-&gt;mapping就指向它 我还要创建一个chain 用这个chain连接我的vma和anon_vma anon_vma根据这个chain排序 然后我在反向映射比如根据page找 就在这个树里面区间树搜到所有用到了我这个page的chain 根据他们找到对应的vma进行映射操作 比如这个时候我fork了 我新建的vma也新建一个chain 连接的这个anon_vma，同时我自己也创建了一个anon_vma 比如这个时候我也触发写时中断了 比如和父亲一样的page 这个chain很难的 不一定会提出去，是区间树到时候判断。 应为现在我和你无关了 我新建了一个page 哦首先根据原有这个page 找到这个anon_ma树把你这个chain踢出去 说跟你无关了 然后我新建一个page映射到我都anon_vma 这个时候假如我这个进程释放了 我就根据这个vma的链找到所有的chain 把他从他们中拔出来ok。如果vma分裂了，一个本体大小缩减，复制的vma的chain一名一样，然后更新区间树范围即可。<em><strong>核心是发布者订阅者</strong></em> 发布者我page连接的anon_vma，订阅者是各个进程的vma。</p>
+<p><em><strong>虚拟内存的价值</strong></em>：<br>
+1、突破物理内存大小限制（换入换出解决）。<br>
+2、同一平坦编制模型。<br>
+3、提升物理内存利用率（多个虚拟地址映射一个物理页，懒分配，动态库RAM中只存一份）。<br>
+4、页级颗粒度安全控制，对每一页都有权限标志位。</p>
+<p><em><strong>除了OOM，内存满了怎么处理</strong></em><br>
+***1、***触发内核异步后台回收，kswpad守护进程启动。<br>
+Linux 内核内部为内存水位划分了三条红线（Watermark）：high（充足）、low（开始紧张）、min（严重短缺）。当可用内存降到 low 水位线时，内核后台线程 kswapd 就会被唤醒，开始在后台静默回收内存，尽量将水位拉回 high，此时前端程序甚至完全无感知。<br>
+回收文件页（Clean Page Cache 释放）：<br>
+***2、***回收文件页（Clean Page Cache 释放）：<br>
+干净页直接释放，脏页写回后释放。<br>
+***3、***LRU换出匿名页<br>
+***4、***进入同步直接内存回收<br>
+强行阻塞正在快速申请内存程序，执行回收。<br>
+***5、***是在没内存了，OOM杀死一个代价最小或者最贪婪程序。<br>
+<img src="https://dss544.github.io/post-images/1793408253718.png" alt="" loading="lazy"></p>
+<h2 id="回收内存带来的性能影响以及常见的解决方式">回收内存带来的性能影响以及常见的解决方式</h2>
+<p>回收有两种方式：<br>
+1、后代内存回收，唤醒kswapd线程，这种是异步回收不会阻塞进程。<br>
+2、直接内存回收，这种方式是同步回收，会阻塞进程造成长时间延迟，CPU利用率升高。</p>
+<p>可回收内存类型为文件页和匿名页：<br>
+文件页回收：干净页直接回收，不影响性能。脏页先写回磁盘在释放。<br>
+匿名页回收：开启Swap机制，将不常访问匿名页换出磁盘，下次在访问再换入内存中。</p>
+<p>解决方式<br>
+调整文件页和匿名页回收倾向,<code>/proc/sys/vm/swappiness </code>这个值越大越积极Swap，繁殖倾向于回收文件页。<br>
+尽早触发kswapd内核线程异步回收内存，调整<code>/proc/sys/vm/min_free_kbytes </code>内存最低限，越小性能好，越大内存好。<br>
+NUMA架构下，通过<code> /proc/sys/vm/zone_reclaim_mode</code>选取模式控制</p>
+<pre><code class="language-c">0 （默认值）：在回收本地内存之前，在其他 Node 寻找空闲内存。
+1：只回收本地内存干净页。
+2：只回收本地内存，在本地回收内存时，可以将文件页中的脏页写回硬盘，以回收内存。
+4：只回收本地内存，在本地回收内存时，可以用 swap 方式回收内存。
+</code></pre>
+<p>如果看到系统还有一般内存，但是频繁触发直接内存回收看看这个值是不是不是0.</p>
+<p>如果保证一个重要进程不被杀，调小<code>/proc/[pid]/oom_score_adj </code>这个（-1000~1000），彻底免疫 OOM Killer直接设置为-1000。</p>
+<h2 id="4gb物理内存申请8gb内存">4GB物理内存申请8GB内存</h2>
+<p>要说明是32位系统，64位系统，有没有开启swap分区，申请8GB会不会被使用。<br>
+32位操作系统，进程理论最大申请3GB大小虚拟内存，所以会失败。<br>
+64位中，进程理论申请128T所以申请没关系，但是要看有没有swap分区<br>
+没有swap分区，物理空间不够会被操作系统杀掉，有swap分区即使物理内u才能有4GB，程序依然能使用8GB。</p>
+<h2 id="lru和升级双链表分代-lru">LRU和升级（双链表/分代） LRU</h2>
+<p>传统 LRU 盲目遵从“新即是热”，单次全量扫描（冷数据）就会直接将长期高频的热点彻底挤出；而升级版 LRU 划分“冷区（Inactive）”与“热区（Active）”，新数据仅能先入冷区，只有在冷区内再次被有效命中，才允许晋升至热区，以此筑起“防污染防火墙”，确保核心热数据不被单次突发流量冲垮。<br>
+文件页和预读的都先到inactive，文件页只有重复读取才提升到active。匿名页根据有page结构体mapping最低位位置为1确认，只要读取就放在active最低位。</p>
+<h2 id="vma结构体">vma结构体</h2>
+<p>大文件读取的时候，要开启预读策略。类似二叉树就不用开启预读策略。<br>
+代码段：可读可执行<br>
+数据段：可读可写<br>
+BSS段：可读可写<br>
+堆      ：可读可写<br>
+文件映射与匿名映射区：看用户<br>
+用户栈：可读可写<br>
+内核空间：不可触碰<br>
+4GB虚拟空间布局如下：ZONE_DMA（0<sub>16MB）ZONE_NORMAL（16</sub>896）ZONE_HIGH（896~4GB）<br>
+<img src="https://dss544.github.io/post-images/1793519448388.png" alt="" loading="lazy"></p>
+<h2 id="7">7</h2>
+<p>为什么在使用全局变量或者其他函数的时候要变成相对偏移而不是直接写虚拟地址？好处是节省text段代码长度，能够动态链接（所有运行程序共享一个文件），不然不同的可执行程序对动态链接这个文件起始长度不一定一样，还有安全防护地址随机化。<br>
+.so是一种特殊可重定位文件，他是一个独立的，有自己的text，data段那些，类似mmap，当遇到写的时候直接写时复制，这样各个程序之间不影响，内部完全使用相对偏移。具有动态解析特性。PLT（只读代码）：提供间接跳转的跳板指令。GOT（可写数据数组）：存放外部函数真实指针。只有函数第一次被调用时，动态链接器才去解析真实绝对地址，并将其覆写填入 GOT 数组中；后续调用直接走 GOT 跳转，绕过解析开销。</p>
+<p>编译出来的.c文件也能看map文件，类似于keil的那种，知道各个变量内存分布以及优化情况。一般都是将一个静态文件里面使用到函数的.o文件完全拷贝进去。<br>
+链接器再命令行处理文件，只从左到右扫一遍，E集合U集合D集合，E集合是全部打包进可执行文件.o文件清单，U集合是为解决符号清单，D是确定符号清单。</p>
+<p>这个vaddr mod align = off mod align 是为了让虚拟地址块偏移等于物理地址块偏移.</p>
+<p>为什么动态库需要plt，got表而不能像静态库一样写死偏移虚拟地址，我的理解是假如引用两个so文件都用了一个so文件，他们把这个文件偏移地址可能不一样，两个虚拟地址映射就起冲突了。而且你动态库可能升级，每次放的位置以及这个大小都不确定，你跟main函数偏移无法得知，这样就不能用绝对虚拟地址和相对偏移了。但是你不想每次运行就计算出所有虚拟地址写死在got，这样你只能先跳转到plt在计算真实地址写入got。 典型的 ELF 可执行目标文件如下图：<br>
+<img src="https://dss544.github.io/post-images/1791891299336.png" alt="" loading="lazy"><br>
+如果要热加载so库，得使用dlfcn.h里面的函数。<br>
+PIC核心：不管这段机器码被操作系统加载到虚拟内存的哪个基地址，代码段里的所有指令都不需要被改写，就能正常读取数据和跳转执行。PLT核心是一个数组，PLT[0]负责跳转到动态链接器，<br>
+<img src="https://dss544.github.io/post-images/1791893727837.png" alt="" loading="lazy"><br>
+动态链接器是一个全局程序，要调用它必须给出信息，下面是这样：<br>
+GOT[0] 是模块自身的静态配置总目录（.dynamic）；<br>
+GOT[1] 是模块在运行时的动态户口本（link_map）；<br>
+push $0x1 是“查第几个”，push *GOT[1] 是“查谁家的”，两者缺一不可。</p>
+<p>打桩方式有三种，编译时，链接时，运行时。</p>
+<p>##8<br>
+当接受到异常（中断时），后来会有三种处理情况：<br>
+1、重新运行该指令（缺页异常）。<br>
+2、执行下一条指令（被中断定时器打断）。<br>
+3、程序崩溃（程序里面除以0）。<br>
+x86进入内核态，linux把一些常用快速变量放在一块物理页，然后各个程序映射他直接读取，这样就省去了上下文开销。</p>
+<pre><code class="language-c">【用户态空间】 (stvec 指向 trampoline)
+   用户执行 ecall 
+       │
+       ▼
+【蹦床页 uservec】 (借由 trapframe 换页表、换栈)
+   从 trapframe 读 kernel_sp  ──&gt; 切换至【内核栈】
+   从 trapframe 读 kernel_satp ──&gt; 切换至【内核页表】
+   跳转到 usertrap()
+       │
+       ▼
+【内核态空间 usertrap()】 
+   第一件事：w_stvec(kernelvec) ──&gt;【切换向量表为内核中断模式】
+       │
+       ├───&gt; 若此时发生硬件中断：直接跳到 kernelvec (在当前内核栈上处理，不切页表)
+       │
+       └───&gt; 正常系统调用：sys_write() 执行完毕
+       │
+       ▼
+【准备回程 usertrapret()】
+   重新填好 trapframe-&gt;kernel_sp 和 kernel_satp
+   换回向量表：w_stvec(trampoline + uservec)
+       │
+       ▼
+【蹦床页 userret】
+   换回【用户页表】
+   从 trapframe 恢复用户通用寄存器与【用户栈】
+   执行 sret 硬件返回
+       │
+       ▼
+【回到用户态程序】
+</code></pre>
+<p>x86-64架构将异常编号固定为0<sub>255，其中0</sub>31号被intel硬件架构师定死，无论是linux，windows还是macos，是要是x86芯片都一样。</p>
+<p>linux进程地址空间结构如下，可用<code>cat /proc/&lt;PID&gt;/maps</code>命令查看<br>
+<img src="https://dss544.github.io/post-images/1792025168258.png" alt="" loading="lazy"><br>
+为什么需要有内核虚拟内存？内核在这块映射了一些系统调用函数以及分配了内核栈，每个内核栈是创建进程就申请了8~16kb，每个进程独有的。这样好处是可以利用进程的页表进行映射，不用再切换内核页表，而不用刷新页表的tlb。<br>
+开启MMU之后，控制内存都得查表，linux内核为了加快内存分配速度，把物理内存从0开始全部空间线性映射到内核虚拟地址一段固定区间，这样<code>物理地址(PA)=内核虚拟地址(VA)-PAGE_OFFSET</code></p>
+<p>fork刚开始父子虚拟地址物理地址完全一样，直到子进程写了，写时复制会让虚拟地址不变物理地址复制一份，对于fork画流程图会很好理解。<br>
+<img src="https://dss544.github.io/post-images/1792034960153.png" alt="" loading="lazy"><br>
+子进程在exit时，虚拟内存、打开文件那些被内核挥手，但是一小部分元数据（进程控制块，PID，退出状态码等）还在，给父进程查看，父进程必须显示调用wait or waitpid否则变成僵尸进程。子进程exit的时候会给父进程发送一个信号，可以修改这个处理函数，在这个函数里面非阻塞的waitu所有进程。</p>
+<p>有空常看看时间轮转算法。<br>
+在程序运行中，用户栈压入argc，argv，argv[argc]=NULL，envp这些。</p>
+<p>setjmp那些就是C语言层面的类似try-catch。</p>
+<p>页表本质就是一个存放在dram的数组，每个数组元素叫做页表条目（PTE）。<br>
+***第一步：***CPU硬件发起访存，MMU报错上传给内核。***第二步：***内核拿着地址去查红黑树，来看这段有没有访问权限，换入还是换出等操作。***第三步：***按需分配与修复，操作系统调回真实物理页，填入权限。这三步好处是1、惰性分配。2、写时复制。3、精准内存防护。</p>
+<p>虚拟页号（VPN），虚拟页偏移量（VPO），物理页号（PPN），物理页偏移（PPO）。<br>
+VPO==PPO的好处是：硬件翻译零延迟（零计算开销）、防止内存外部碎片、字节对齐属性不变。<br>
+在同一4kb页面内，虚拟地址连续物理地址也连续。</p>
+<p>那cpu的几级cacheline，为什么用物理内存而不是虚拟内存呢？<br>
+虚拟内存各个进程不一样，而物理内存唯一，这样切换进程不用管。<br>
+权限检查在mmu翻译的时候干完了，缓存里面都是权限正常的所以缓存不用管权限。<br>
+<img src="https://dss544.github.io/post-images/1792224591959.png" alt="" loading="lazy"></p>
+<p>PA=PPN（物理页号）| PPO（物理页内偏移量）<br>
+PTE (页表条目) = 权限 | PPN，TLB命中和没命中<br>
+<img src="https://dss544.github.io/post-images/1792226179306.png" alt="" loading="lazy"></p>
+<p>因为头部8字节指针，尾部8字节指针，但是呢尾部和数据是公用的。可通过malloc_usable_size()+sizeof(void *)获取真实大小，32位就是至少16字节，具体包括prev_size，size头部，fd前驱指针，bk后驱指针。<br>
+64位下，你malloc分配一个块，至少32字节(如果32位就是16)，然后按照<code>2*sizeof(void *)</code>字节对齐(因为不知道用户要把它转化为什么指针，只能按照最大的long long来，如果不对齐，memcpy就无法高速优化)，排布如下(大小有3个位标记大小肯定8倍数，为000)：</p>
+<pre><code class="language-c">+-----------------------+ 
+| prev_size (8 字节)    | -&gt; 如果前一个块是空闲的，记录前一块大小（用于向前合并）
++-----------------------+ 
+| size | A|M|P (8 字节) | -&gt; 本块总大小 + 3个标志位 (A/M/P)
++-----------------------+ &lt;--- 如果被 malloc 分配，返回给用户的指针从这里开始
+| fd (8 字节)           | -&gt; 指向双向链表的前驱空闲块指针
++-----------------------+ 
+| bk (8 字节)           | -&gt; 指向双向链表的后继空闲块指针
++-----------------------+
+</code></pre>
+<p>malloc分配欸和释放机制<br>
+glibc 堆内存管理精要<br>
+1、分级检索与零遍历：Fastbin 是按固定尺寸划分的独立单向栈，分配只需 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></mrow><annotation encoding="application/x-tex">O(1)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord">1</span><span class="mclose">)</span></span></span></span> 弹栈，平时绝不主动合并邻居（牺牲外部碎片换极致速度）；Smallbin 依靠 62 个精确桶配合 CPU 单指令硬件位图（Bit Scan）实现单周期定位。<br>
+2、缓存中转与延迟分拣：普通块 free 后合并丢入 Unsortedbin 双向链表；只有在新分配未直接命中时，遍历它顺手完成“局部性复用”与“分流归位”。大块则在 Largebin 依跳表切割，切剩的边角料回炉 Unsortedbin。<br>
+3、Top Chunk 与 brk 边界：Top Chunk 是堆内紧贴进程物理边界（brk 指针）的一整片未划分荒地。所有 Bins 耗尽时直接切削 Top Chunk 头部；若 Top Chunk 不足，才触发 brk/sbrk 系统调用向内核推高边界将其扩容。<br>
+malloc用brk方式申请内存，free的时候不会把内存归还，而是缓存在malloc内存池，下次使用。<br>
+malloc用mmap申请的时候，free会真正释放内存。</p>
+<p>陷入内核有三种方式，主动调用，异常和中断。流程如下：</p>
+<pre><code class="language-c">[用户态代码执行]
+1. 硬件自动提升特权级 (Ring 3 -&gt; Ring 0) &amp; 记录关键状态 (RFLAGS / RIP / RSP)
+2. 栈指针切换 (用户栈 RSP -&gt; 内核栈 RSP)
+3. 保护用户态现场 (将通用寄存器压入内核栈 struct pt_regs)
+4. 分发与处理 (查表定位具体处理函数执行)
+5. 恢复现场 (弹出通用寄存器) &amp; 硬件降回 Ring 3 (sysretq / iretq)
+</code></pre>
+<p><em>size--是错误的，--（后缀）比</em>优先级高，这里本意是要*size就按少，但是确实向后退指针然后减少值。</p>
+<p>##9<br>
+又忘记硬链接和软连接区别了，一个是给文件起别名，删除源文件不影响但是不能指向文件夹和跨区，一个是只是打一个标签，是新的文件底层inode号不一样，可以指向文件夹和跨区但是源文件没了就不能用了。</p>
+<p>注意，只有硬计数和软计数都为0，这个文件才会从磁盘抹除。</p>
+<p>文件偏移量是保存在内核的打开文件表项中的，而非由进程空间或 v-node 保存。<br>
+***共享机制：***fork() 或 dup() 产生的文件描述符是指针层面的浅拷贝，多个描述符引用同一个打开文件表项（引用计数递增），因此动态上下文（如偏移量、文件状态标志）是完全共享的。<br>
+***隔离机制：***独立调用 open() 会创建独立的打开文件表项，因此偏移量天然隔离。   底层收敛：无论创建了多少个打开文件表项，只要目标文件相同，它们最终都汇聚指向同一个全局唯一的 v-node/inode 表项，共享底层的物理文件元数据与磁盘数据块。”</p>
+<h2 id="进程和线程">进程和线程</h2>
+<p>创建进程：<br>
+1、申请一个空白PCB，并填写一些控制和管理进程的信息，比如进程唯一标识等<br>
+2、为该进程分配运行所需资源，比如内存资源<br>
+3、将PCB插入酒席队列，等待被调度运行</p>
+<p>终止进程<br>
+1、查找需要终止的进程PCB<br>
+2、如果处于执行状态，终止进程执行，将CPU资源分配给其他进程<br>
+3、如果还有子进程，把该进程子进程给1号进程j接管<br>
+4、进程所有资源归还操作系统<br>
+5、将PCB在队列中删除</p>
+<p>阻塞进程<br>
+找到该进程标识号对应PCB<br>
+如果该进程为运行状态，保护其现场，将其现场转为阻塞状态停止运行<br>
+PCB插入阻塞队列中</p>
+<p>唤醒进程<br>
+找到PCB，阻塞队列中移除，设置为就绪状态，PCB插入就绪队列等待调度</p>
+<p>线程上下文切换：<br>
+当两个线程不是一个进程，切换过程和进程上下文切换一样<br>
+两个线程同属于一个进程，虚拟内存共享所以切换时这些不动，只切换线程的私有数据，寄存器等不共享的数据。</p>
+<p>递归申请锁，ABBA锁，资源耗尽（一个连接池只有两个，AB都申请了，然后AB没释放情况下继续申请），<br>
+读写锁（2个线程获取读锁然后没释放就要申请写锁，写锁要所有读锁释放才OK能升级）。<br>
+htop是一个好工具</p>
+<h3 id="进程调度原则">进程调度原则</h3>
+<p>1、CPU利用率：调度程序确保CPU是匆忙状态，提高CPU利用率<br>
+2、系统吞吐量：“单位时间内CPU完成进程数量，长作业进程占用较长时间，降低吞吐量，相反短作业进程提升吞吐量。<br>
+3、周转时间：进程运行+阻塞+等待时间之和<br>
+4、等待时间：进程处于就绪队列，时间越长越不好<br>
+5、响应时间：用户请求到系统第一次产生响应所花费的时间，比如键盘鼠标</p>
+<p>常用调度算法：先来先服务，最短作业优先，（高响应比优先调度（优先权=（等待时间/要求服务时间）+1），一般不知道时间所以只是理论算法），时间片轮转，最高优先级调度算法</p>
+<p>linux有一个多级反馈队列算法，就是有一个就绪队列链表，优先级从高到底，优先级越高的时间片越短，每次有新任务默认最高优先级放在就绪队列1。在低优先级运行时，如果有高优先级来了立马打断去运行高优先级的，缺点低优先级会饿死，假如高优先级一直有任务，解决方案：每隔一秒把所有任务放在最高优先级。<br>
+<img src="https://dss544.github.io/post-images/1793584967892.png" alt="" loading="lazy"></p>
+<pre><code class="language-c">| 维度 | 信号量 (Semaphore) | 条件变量 (Condition Variable) |
+| :--- | :--- | :--- |
+| 核心底色 | 数量管家 (拥有 5 个空闲 Buffer) | 状态监视器 (复杂事件是否发生) |
+| 互斥锁依赖 | ❌ 独立使用 (自带原子操作) | ✅ 必须配合 Mutex 使用 |
+| 信号记忆 | 提前发不丢失 (内部数值累加) | 提前发永久丢失 (需外部标志位) |
+| 最佳场景 | 中断单向通知，并发资源池限制 | 生产消费队列，线程池，复杂状态机 |
+</code></pre>
+<p>linux以及封装好读者优先或者写者优先的锁，如下：</p>
+<pre><code class="language-c">pthread_rwlockattr_t attr;
+pthread_rwlockattr_init(&amp;attr);
+// 设置为写者优先（避免写者饿死）
+pthread_rwlockattr_setkind_np(&amp;attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+pthread_rwlock_init(&amp;rwlock, &amp;attr);
+pthread_rwlockattr_destroy(&amp;attr);
+</code></pre>
+<p>读者优先测试代码</p>
+<pre><code class="language-c">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;pthread.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;time.h&gt;
+
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t    write_cond;
+    pthread_cond_t    read_cond;
+    int                                readers;
+    int                                writing;
+    int                                waiting_readers;
+}reader_pref_rwlock_t;
+
+void reader_pref_init(reader_pref_rwlock_t *lock) {
+    pthread_mutex_init(&amp;lock-&gt;mutex, NULL);
+    pthread_cond_init(&amp;lock-&gt;write_cond, NULL);
+    pthread_cond_init(&amp;lock-&gt;read_cond, NULL);
+    lock-&gt;readers = 0;
+    lock-&gt;writing = 0;
+    lock-&gt;waiting_readers = 0;
+}
+
+// 读者加锁
+void reader_pref_rdlock(reader_pref_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    lock-&gt;waiting_readers++;
+    while (lock-&gt;writing != 0) {
+        pthread_cond_wait(&amp;lock-&gt;read_cond, &amp;lock-&gt;mutex);
+    }
+    lock-&gt;waiting_readers--;
+    lock-&gt;readers++;
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}
+
+// 读者解锁
+void reader_pref_rdunlock(reader_pref_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    lock-&gt;readers--;
+    if (lock-&gt;readers == 0) {
+        pthread_cond_signal(&amp;lock-&gt;write_cond);
+    }
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}
+
+// 写者加锁
+void reader_pref_wrlock(reader_pref_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    while(lock-&gt;readers != 0 || lock-&gt;writing != 0) {
+        pthread_cond_wait(&amp;lock-&gt;write_cond, &amp;lock-&gt;mutex);
+    }
+    lock-&gt;writing = 1;
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}   
+// 写者解锁
+void reader_pref_wrunlock(reader_pref_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    lock-&gt;writing = 0;
+    if (lock-&gt;waiting_readers)
+        pthread_cond_broadcast(&amp;lock-&gt;read_cond);
+    else
+        pthread_cond_signal(&amp;lock-&gt;write_cond);
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}// =================== 验证实验 ===================
+
+reader_pref_rwlock_t my_lock;
+int shared_data = 100;
+
+void print_time(const char *role, const char *action) {
+    time_t now = time(NULL);
+    struct tm *t = localtime(&amp;now);
+    printf(&quot;[%02d:%02d:%02d] %s: %s\n&quot;, t-&gt;tm_hour, t-&gt;tm_min, t-&gt;tm_sec, role, action);
+}
+
+// 读者 1：0 秒时进场，耗时读取 3 秒（0s ~ 3s）
+void* reader_1(void* arg) {
+    reader_pref_rdlock(&amp;my_lock);
+    print_time(&quot;读者 1&quot;, &quot;进入临界区，开始耗时读取 3 秒...&quot;);
+    sleep(3);
+    print_time(&quot;读者 1&quot;, &quot;读取完毕，退出临界区&quot;);
+    reader_pref_rdunlock(&amp;my_lock);
+    return NULL;
+}
+
+// 写者：在第 1 秒到达，尝试加锁排队
+void* writer_thread(void* arg) {
+    sleep(1); // 确保读者 1 先拿到锁
+    print_time(&quot;写者&quot;, &quot;到达！准备获取写锁（开始排队等读者 1）&quot;);
+    reader_pref_wrlock(&amp;my_lock);
+
+    print_time(&quot;写者&quot;, &quot;终于抢到锁！正在修改数据（耗时 2 秒）...&quot;);
+    shared_data += 50;
+    sleep(2);
+    print_time(&quot;写者&quot;, &quot;修改完成，释放写锁&quot;);
+
+    reader_pref_wrunlock(&amp;my_lock);
+    return NULL;
+}
+
+// 读者 2（晚期读者）：在第 2 秒到达（此时读者 1 还没走，写者已经在排队等待）
+void* reader_2(void* arg) {
+    sleep(2); // 第 2 秒到达
+    print_time(&quot;读者 2 (晚期)&quot;, &quot;到达！尝试获取读锁...&quot;);
+
+    // 在读者优先下：读者 2 发现 writing == 0（写者还在排队没进场），
+    // 读者 2 会直接插队无视排队的写者，进去跟读者 1 一起并发读取！
+    reader_pref_rdlock(&amp;my_lock);
+
+    print_time(&quot;读者 2 (晚期)&quot;, &quot;成功获取读锁！开始并发读取 2 秒...&quot;);
+    sleep(2);
+    print_time(&quot;读者 2 (晚期)&quot;, &quot;读取完毕，退出临界区&quot;);
+
+    reader_pref_rdunlock(&amp;my_lock);
+    return NULL;
+}
+
+int main() {
+    reader_pref_init(&amp;my_lock);
+
+    pthread_t r1, w, r2;
+    pthread_create(&amp;r1, NULL, reader_1, NULL);
+    pthread_create(&amp;w, NULL, writer_thread, NULL);
+    pthread_create(&amp;r2, NULL, reader_2, NULL);
+
+    pthread_join(r1, NULL);
+    pthread_join(w, NULL);
+    pthread_join(r2, NULL);
+
+    return 0;
+}
+</code></pre>
+<p>读优先代码<br>
+有事没事多写写 这个很考验技术</p>
+<pre><code class="language-c">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;pthread.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;time.h&gt;
+
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t  read_cond;       // 读者等待队列
+    pthread_cond_t  write_cond;      // 写者等待队列
+
+    int readers;                     // 当前正在临界区读取的读者数量
+    int writers;                     // 当前正在写入的写者数量 (0 或 1)
+    int waiting_writers;             // 正在排队等待的写者数量 (核心标志)
+    int waiting_readers;
+} writer_pref_rwlock_t;
+
+// 1. 初始化锁
+void my_writer_pref_init(writer_pref_rwlock_t *lock) {
+    pthread_mutex_init(&amp;lock-&gt;mutex, NULL);
+    pthread_cond_init(&amp;lock-&gt;write_cond, NULL);
+    pthread_cond_init(&amp;lock-&gt;read_cond, NULL);
+    lock-&gt;readers = 0;
+    lock-&gt;writers = 0;
+    lock-&gt;waiting_writers = 0;
+    lock-&gt;waiting_readers = 0;
+}
+
+// 2. 读者加锁（写者优先：有写者排队时读者必须等待）
+void my_writer_pref_rdlock(writer_pref_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    lock-&gt;waiting_readers++;
+    while(lock-&gt;writers != 0 || lock-&gt;waiting_writers != 0) {
+        pthread_cond_wait(&amp;lock-&gt;read_cond, &amp;lock-&gt;mutex);
+    }
+    lock-&gt;waiting_readers--;
+    lock-&gt;readers++;
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}
+
+// 3. 读者解锁
+void my_writer_pref_rdunlock(writer_pref_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    lock-&gt;readers--;
+     if (lock-&gt;readers == 0 &amp;&amp; lock-&gt;waiting_writers &gt; 0) {
+        pthread_cond_signal(&amp;lock-&gt;write_cond);
+     }
+
+
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}
+
+// 4. 写者加锁（声明排队，拦截后续读者）
+void my_writer_pref_wrlock(writer_pref_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    lock-&gt;waiting_writers++;
+    while(lock-&gt;readers != 0 || lock-&gt;writers != 0) {
+        pthread_cond_wait(&amp;lock-&gt;write_cond, &amp;lock-&gt;mutex);
+    }
+    lock-&gt;waiting_writers--;
+    // 标记在写
+    lock-&gt;writers = 1;
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}
+
+// 5. 写者解锁（优先唤醒下一个排队的写者）
+void my_writer_pref_wrunlock(writer_pref_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    
+     lock-&gt;writers = 0;
+     if (lock-&gt;waiting_writers &gt; 0) {
+        pthread_cond_signal(&amp;lock-&gt;write_cond);
+     }
+     // 真的有人在等待读 唤醒所有读者
+     else if (lock-&gt;waiting_readers){
+        pthread_cond_broadcast(&amp;lock-&gt;read_cond);
+     }
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}
+
+// =================== 测试验证平台 ===================
+
+writer_pref_rwlock_t rwlock;
+int shared_resource = 100;
+
+void print_stamp(const char *role, const char *msg) {
+    time_t now = time(NULL);
+    struct tm *t = localtime(&amp;now);
+    printf(&quot;[%02d:%02d:%02d] %s: %s\n&quot;, t-&gt;tm_hour, t-&gt;tm_min, t-&gt;tm_sec, role, msg);
+}
+
+// 读者 1：0 秒启动，占用锁 3 秒（0s ~ 3s）
+void* thread_reader1(void* arg) {
+    my_writer_pref_rdlock(&amp;rwlock);
+    print_stamp(&quot;读者 1&quot;, &quot;进入临界区，开始耗时读取 3 秒...&quot;);
+    sleep(3);
+    print_stamp(&quot;读者 1&quot;, &quot;读取完成，退出临界区&quot;);
+    my_writer_pref_rdunlock(&amp;rwlock);
+    return NULL;
+}
+
+// 写者：1 秒后到达并尝试加锁（排队等待读者 1）
+void* thread_writer(void* arg) {
+    sleep(1);
+    print_stamp(&quot;写者&quot;, &quot;到达，准备获取写锁（声明排队，拦截后续读者）&quot;);
+    my_writer_pref_wrlock(&amp;rwlock);
+    print_stamp(&quot;写者&quot;, &quot;成功获取写锁！开始写入（耗时 2 秒）...&quot;);
+    shared_resource += 50;
+    sleep(2);
+    print_stamp(&quot;写者&quot;, &quot;写入完成，释放写锁&quot;);
+    my_writer_pref_wrunlock(&amp;rwlock);
+    return NULL;
+}
+
+// 读者 2：2 秒后到达（此时写者已在排队）
+// 若写者优先成立：读者 2 必须被拦截在门外，等写者写完才能进入
+void* thread_reader2(void* arg) {
+    sleep(2);
+    print_stamp(&quot;读者 2 (晚期)&quot;, &quot;到达，尝试获取读锁...&quot;);
+    my_writer_pref_rdlock(&amp;rwlock);
+    print_stamp(&quot;读者 2 (晚期)&quot;, &quot;成功获取读锁！开始读取...&quot;);
+    sleep(1);
+    print_stamp(&quot;读者 2 (晚期)&quot;, &quot;读取完成，退出临界区&quot;);
+    my_writer_pref_rdunlock(&amp;rwlock);
+    return NULL;
+}
+
+int main() {
+    my_writer_pref_init(&amp;rwlock);
+
+    pthread_t r1, w, r2;
+    pthread_create(&amp;r1, NULL, thread_reader1, NULL);
+    pthread_create(&amp;w, NULL, thread_writer, NULL);
+    pthread_create(&amp;r2, NULL, thread_reader2, NULL);
+
+    pthread_join(r1, NULL);
+    pthread_join(w, NULL);
+    pthread_join(r2, NULL);
+
+    printf(&quot;所有测试线程正常退出，写者优先验证完毕。\n&quot;);
+    return 0;
+}
+</code></pre>
+<p>公平策略：<br>
+优先级相同；写者、读者互斥访问；只能一个写者访问临界区；可以有多个读者同时访问临界资源； 具体可看小林coding的5.3</p>
+<pre><code class="language-c">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;pthread.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;time.h&gt;
+
+// =================== 1. 结构体定义 (请补充) ===================
+typedef struct {
+    // TODO: 在此处定义你需要的锁、条件变量与状态变量
+    // 排队门禁锁
+    pthread_mutex_t order_mutex;
+    pthread_mutex_t mutex;
+    pthread_cond_t write_cond;
+    int readers;
+    int writers;
+} fair_rwlock_t;
+
+// =================== 2. 读写锁接口实现 (请补充) ===================
+
+// 初始化
+void fair_rwlock_init(fair_rwlock_t *lock) {
+    pthread_mutex_init(&amp;lock-&gt;order_mutex, NULL);
+    pthread_mutex_init(&amp;lock-&gt;mutex, NULL);
+    pthread_cond_init(&amp;lock-&gt;write_cond, NULL);
+    lock-&gt;readers = 0;
+    lock-&gt;writers = 0;
+}
+
+// 读者加锁
+void fair_rwlock_rdlock(fair_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;order_mutex);
+    pthread_mutex_unlock(&amp;lock-&gt;order_mutex);
+
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    lock-&gt;readers++;
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}
+
+// 读者解锁
+void fair_rwlock_rdunlock(fair_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    lock-&gt;readers--;
+    if (lock-&gt;readers == 0) {
+        pthread_cond_signal(&amp;lock-&gt;write_cond);
+    }
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+}
+
+// 写者加锁
+void fair_rwlock_wrlock(fair_rwlock_t *lock) {
+    pthread_mutex_lock(&amp;lock-&gt;order_mutex);
+    pthread_mutex_lock(&amp;lock-&gt;mutex);
+    while(lock-&gt;readers &gt; 0) {
+        pthread_cond_wait(&amp;lock-&gt;write_cond, &amp;lock-&gt;mutex);
+    }
+    lock-&gt;writers = 1;
+    pthread_mutex_unlock(&amp;lock-&gt;mutex);
+
+}
+
+// 写者解锁
+void fair_rwlock_wrunlock(fair_rwlock_t *lock) {
+    lock-&gt;writers = 0;
+
+    pthread_mutex_unlock(&amp;lock-&gt;order_mutex);
+}
+
+// =================== 3. 验证测试平台 ===================
+
+fair_rwlock_t my_fair_lock;
+int shared_resource = 100;
+
+void print_stamp(const char *role, const char *msg) {
+    time_t now = time(NULL);
+    struct tm *t = localtime(&amp;now);
+    printf(&quot;[%02d:%02d:%02d] %s: %s\n&quot;, t-&gt;tm_hour, t-&gt;tm_min, t-&gt;tm_sec, role, msg);
+}
+
+// 读者 1：0 秒启动，耗时读取 3 秒 (0s ~ 3s)
+void* thread_reader1(void* arg) {
+    fair_rwlock_rdlock(&amp;my_fair_lock);
+    print_stamp(&quot;读者 1&quot;, &quot;进入临界区，开始读取 3 秒...&quot;);
+    sleep(3);
+    print_stamp(&quot;读者 1&quot;, &quot;读取完毕，退出临界区&quot;);
+    fair_rwlock_rdunlock(&amp;my_fair_lock);
+    return NULL;
+}
+
+// 写者：1 秒到达，尝试加锁排队
+// 预期行为：排在读者 1 后面，等待读者 1 离开临界区
+void* thread_writer(void* arg) {
+    sleep(1);
+    print_stamp(&quot;写者&quot;, &quot;到达！开始排队等待获取写锁...&quot;);
+    fair_rwlock_wrlock(&amp;my_fair_lock);
+    print_stamp(&quot;写者&quot;, &quot;获取写锁成功！正在修改数据（耗时 2 秒）...&quot;);
+    shared_resource += 50;
+    sleep(2);
+    print_stamp(&quot;写者&quot;, &quot;写入完毕，释放写锁&quot;);
+    fair_rwlock_wrunlock(&amp;my_fair_lock);
+    return NULL;
+}
+
+// 读者 2：2 秒到达（晚于写者到达）
+// 预期行为：由于优先级相同、先来后到，读者 2 不能插队写者，必须等写者完成后才能进入
+void* thread_reader2(void* arg) {
+    sleep(2);
+    print_stamp(&quot;读者 2&quot;, &quot;到达！尝试获取读锁...&quot;);
+    fair_rwlock_rdlock(&amp;my_fair_lock);
+    print_stamp(&quot;读者 2&quot;, &quot;获取读锁成功！开始读取（耗时 1 秒）...&quot;);
+    sleep(1);
+    print_stamp(&quot;读者 2&quot;, &quot;读取完毕，退出临界区&quot;);
+    fair_rwlock_rdunlock(&amp;my_fair_lock);
+    return NULL;
+}
+
+int main() {
+    fair_rwlock_init(&amp;my_fair_lock);
+
+    pthread_t r1, w, r2;
+    pthread_create(&amp;r1, NULL, thread_reader1, NULL);
+    pthread_create(&amp;w, NULL, thread_writer, NULL);
+    pthread_create(&amp;r2, NULL, thread_reader2, NULL);
+
+    pthread_join(r1, NULL);
+    pthread_join(w, NULL);
+    pthread_join(r2, NULL);
+
+    printf(&quot;测试完成，所有线程正常退出。\n&quot;);
+    return 0;
+}
+</code></pre>
+<h3 id="死锁产生条件">死锁产生条件</h3>
+<p>死锁四个必要条件是：互斥条件、持有并等待条件、不可剥夺条件、环路等待条件。<br>
+常见死锁：<br>
+ABBA 自递归死锁 资源池耗尽型死锁  核心就是持有锁的时候再去干活要小心<br>
+排查：htop查看进程线程此时状态，gdb导出此时进程堆栈情况，valgrind排查程序。<br>
+解决方法：第一是强制全局固定加锁顺序**（如按 ID 排序）；第二是多锁场景使用 trylock 带超时退避，破坏不可剥夺与持有等待；第三是践行 Open Call 原则，持锁期间严禁调用外部回调与耗时 I/O。”</p>
+<h2 id="调度算法">调度算法</h2>
+<p><img src="https://dss544.github.io/post-images/1793661986809.png" alt="" loading="lazy"><br>
+时钟页面置换算法，逼近LRU，每次页面置换看当前ACCESS位是不是1，是的就放过置0，找到为0就替换。<br>
+<img src="https://dss544.github.io/post-images/1793664827454.png" alt="" loading="lazy"></p>
+<h3 id="寻道算法">寻道算法</h3>
+<p>LOOK扫描算法（SCAN优化版，以物理极限点计算）：<br>
+方案 A（先左后右）：从起点往左走到最左端点，然后掉头一路向右走到最右端点。<br>
+总距离=（起点-最小值）+（最大值-最小值）<br>
+方案 B（先右后左）：从起点往右走到最右端点，然后掉头一路向左走到最左端点。<br>
+总距离=（最大值-起点）+（最大值-最小值）<br>
+在确定方向后开始移动，带移动过程中如果有相反方向点插入，不理他回程处理，相同方向点就处理。<br>
+缺点就是假如有一个反方向1距离的，反而要等待很久，而两端的能快速响应。<br>
+<img src="https://dss544.github.io/post-images/1793668175842.png" alt="" loading="lazy"></p>
+<p>C-LOOK扫描算法（C-SCAN优化版，C-SCAN必须回到物理极限点）<br>
+先只处理一个方向，然后快速复位到最远点继续扫描，有优点就是时间固定，每一个优先级差不多。<br>
+<img src="https://dss544.github.io/post-images/1793668244399.png" alt="" loading="lazy"></p>
+<h3 id="文件系统">文件系统</h3>
+<p>linux文件系统（以Ext2/Ext3为基准），</p>
+<pre><code class="language-c">| 引导块(开机引导代码)| 超级块（整个磁盘情况一览） | 块位图（那些快被使用） | inode 位图（那些inode被使用）  | inode 表（真正inode数据）    | 数据块区 （文件数据区） |
+</code></pre>
+<p>开机指向引导快代码，然后读取根目录/所在的inode表，他对于2，恢复inode后，找到inode指向的数据块区，文件夹很特殊，里面在磁盘存放数据类似，在这里恢复dentry，根目录遍历完成。<br>
+以之前举得例子如下：</p>
+<pre><code class="language-c">物理磁盘分区 (my_disk.img)
+│
+├── 1. inode 表区域
+│     └── inode 2 (根目录的身份证)
+│           ├── 大小: 1024 字节
+│           ├── 类型: 目录 (040755)
+│           └── 数据块指针: 指向物理块 406
+│
+└── 2. 数据块区域
+      └── 第 406 号数据块 (根目录的数据内容)
+            ├── 存放子项 1: inode 号 = 2   | 名字 = &quot;.&quot;
+            ├── 存放子项 2: inode 号 = 2   | 名字 = &quot;..&quot;
+            ├── 存放子项 3: inode 号 = 11  | 名字 = &quot;lost+found&quot;
+            └── 存放子项 4: inode 号 = 12  | 名字 = &quot;mydir&quot;
+</code></pre>
+<pre><code class="language-c">+------------------+-----------------------+
+|  inode 编号 (4B) | 文件名字符串 (name)   |
++------------------+-----------------------+
+|  2                        | &quot;.&quot;                  
+|  2                        | &quot;..&quot;                  
+|  1024                  | &quot;bin&quot;                 
+|  2048                  | &quot;home&quot;                
+|  3072                  | &quot;etc&quot;                 
++------------------+-----------------------+
+</code></pre>
+<p>虚拟文件系统调用形式如下：<br>
+<img src="https://dss544.github.io/post-images/1793675609972.png" alt="" loading="lazy"></p>
+<p>一般从磁盘读取数据到网卡发送，要有四次内核用户切换（read两次，write两次），然后内存拷贝四次（dma硬盘读取，dma网卡传输，内核拷贝用户，用户拷贝内存），使用零拷贝直接在内核就用dma拷给网卡（两次用户切换，两次拷贝）。<br>
+传输大文件，使用[异步IO+直接IO]<br>
+传输小文件，使用零拷贝技术,零拷贝技术是不允许进程对文件内容作进一步的加工的，比如压缩数据再发送。</p>
+<p>select 和 poll 并没有本质区别，它们内部都是使用「线性结构」来存储进程关注的 Socket 集合。在使用的时候，首先需要把关注的 Socket 集合通过 select/poll 系统调用从用户态拷贝到内核态，然后由内核检测事件，当有网络事件产生时，内核需要遍历进程关注 Socket 集合，找到对应的 Socket，并设置其状态为可读/可写，然后把整个 Socket 集合从内核态拷贝到用户态，用户态还要继续遍历整个 Socket 集合找到可读/可写的 Socket，然后对其处理。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#2">2</a>
+<ul>
+<li><a href="#3">3</a></li>
+<li><a href="#%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86">内存管理</a></li>
+<li><a href="#5">5</a></li>
+<li><a href="#top%E5%91%BD%E4%BB%A4">top命令</a></li>
+<li><a href="#%E5%8F%8D%E5%90%91%E6%98%A0%E5%B0%84%E7%90%86%E8%A7%A3">反向映射理解</a></li>
+</ul>
+</li>
+<li><a href="#%E5%9B%9E%E6%94%B6%E5%86%85%E5%AD%98%E5%B8%A6%E6%9D%A5%E7%9A%84%E6%80%A7%E8%83%BD%E5%BD%B1%E5%93%8D%E4%BB%A5%E5%8F%8A%E5%B8%B8%E8%A7%81%E7%9A%84%E8%A7%A3%E5%86%B3%E6%96%B9%E5%BC%8F">回收内存带来的性能影响以及常见的解决方式</a></li>
+<li><a href="#4gb%E7%89%A9%E7%90%86%E5%86%85%E5%AD%98%E7%94%B3%E8%AF%B78gb%E5%86%85%E5%AD%98">4GB物理内存申请8GB内存</a></li>
+<li><a href="#lru%E5%92%8C%E5%8D%87%E7%BA%A7%E5%8F%8C%E9%93%BE%E8%A1%A8%E5%88%86%E4%BB%A3-lru">LRU和升级（双链表/分代） LRU</a></li>
+<li><a href="#vma%E7%BB%93%E6%9E%84%E4%BD%93">vma结构体</a></li>
+<li><a href="#7">7</a></li>
+<li><a href="#%E8%BF%9B%E7%A8%8B%E5%92%8C%E7%BA%BF%E7%A8%8B">进程和线程</a>
+<ul>
+<li><a href="#%E8%BF%9B%E7%A8%8B%E8%B0%83%E5%BA%A6%E5%8E%9F%E5%88%99">进程调度原则</a></li>
+<li><a href="#%E6%AD%BB%E9%94%81%E4%BA%A7%E7%94%9F%E6%9D%A1%E4%BB%B6">死锁产生条件</a></li>
+</ul>
+</li>
+<li><a href="#%E8%B0%83%E5%BA%A6%E7%AE%97%E6%B3%95">调度算法</a>
+<ul>
+<li><a href="#%E5%AF%BB%E9%81%93%E7%AE%97%E6%B3%95">寻道算法</a></li>
+<li><a href="#%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F">文件系统</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/dai-ma-da-quan/">
+              <h3 class="post-title">
+                代码大全
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

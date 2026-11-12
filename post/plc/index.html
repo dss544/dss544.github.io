@@ -1,0 +1,376 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PLC | Gridea</title>
+<link rel="shortcut icon" href="https://dss544.github.io/favicon.ico?v=1794445159219">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://dss544.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="PLC | Gridea - Atom Feed" href="https://dss544.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="
+
+References（库引用）
+对应概念： 相当于 C/C++ 里的 #include 头文件与链接库（.lib / .so）。
+
+
+DUTs（Data Unit Types，自定义数据类型）
+对应概念： 相当于 C/C++ 里的 ty..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://dss544.github.io">
+  <img class="avatar" src="https://dss544.github.io/images/avatar.png?v=1794445159219" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              PLC
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-08-17
+              </span>
+              <span>
+                8 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <ol>
+<li>
+<p>References（库引用）<br>
+对应概念： 相当于 C/C++ 里的 #include 头文件与链接库（.lib / .so）。</p>
+</li>
+<li>
+<p>DUTs（Data Unit Types，自定义数据类型）<br>
+对应概念： 相当于 C/C++ 里的 typedef struct、enum、union。</p>
+</li>
+<li>
+<p>GVLs（Global Variable Lists，全局变量表）<br>
+对应概念： 相当于 C/C++ 里的全局变量声明文件（extern int g_val;）。</p>
+</li>
+<li>
+<p>POUs（Program Organization Units，程序组织单元）<br>
+对应概念： 相当于你的源代码文件夹（.cpp / .c 源文件）。</p>
+</li>
+<li>
+<p>VISUs（Visualizations，可视化界面）<br>
+对应概念： 相当于上位机轻量级 UI / HMI 画面</p>
+</li>
+<li>
+<p>External Types（外部类型）<br>
+作用： 当你引入了 C++ 模块、MATLAB/Simulink 生成的模型或外部 TMC 接口描述文件时，外部模块导出的数据类型会显示在这里，供 PLC 侧调用。</p>
+</li>
+<li>
+<p>PlcTask (PlcTask)（PLC 实时任务配置）<br>
+对应概念： 相当于 RTOS 中的线程/任务调度配置器。</p>
+</li>
+<li>
+<p>PLC_Project1 Instance（PLC 运行实例）<br>
+作用：上面的 PLC_Project1 Project 是你的“源码工程”，而 Instance 是该工程在实时内核中的“运行实例镜像”。</p>
+</li>
+</ol>
+<p>声明变量，变量不区别大小写，变量名不存在空客，连续下划线<br>
+变量名:数据类型 := 初始值;</p>
+<p>SINT    8位有符号 = char<br>
+INT     16位有符号<br>
+DINT   32位有符号<br>
+LINT    64位有符号</p>
+<p>无符号就在上面的加上U<br>
+位串类型<br>
+BOOL     8位 取值 TRUE/FALSE<br>
+BIT         1位 只能定义在STRUCT里面<br>
+WORD   16位<br>
+DWORD 32位<br>
+REAL有效7位小数 LREAL有效约15位</p>
+<p>时间类型<br>
+TIME  (T0ms ~ T#49d17h2m47s295ms)<br>
+LTIME<br>
+TOD/TIME_OF_DAY   一天之内的时刻(TOD#0:0:0 ~ TOD#23:59:999 ) TOD#08:30:00<br>
+DATE                日历日期(D#1970-01-01 ~ D#2106-02-07)        D#2026-08-18<br>
+DT/DATE_AND_TIME 完整时间戳(年-月-日-时:分:秒) DT#2026-08-18-14:30:00<br>
+DT#1970-01-01-00:00:00 ~ DT#2106-02-07-06:28:15</p>
+<p>AT %I* 代表输入  AT %Q* 代表输出，可以绑定到模拟设备VISUs。</p>
+<p>GVLs里面能用来定义全局变量，DUTs可以定义自己的数据结构，定义完自动变成全局变量。</p>
+<p>一维数组<br>
+变量名:ARRAY[起始索引..结束索引] OF 数据类型;<br>
+arrPosition : ARRAY[1..10] OF LREAL;<br>
+arrSpeed    : ARRAY[0..4] OF INT := [100, 200, 300, 400, 500];<br>
+arrOffsets  : ARRAY[1..5] OF INT := [5(10)]; // 展开就是 [10, 10, 10, 10, 10]</p>
+<p>##前缀<br>
+b Boolean   bEndswitchLinks<br>
+n int           nAnalogInput01<br>
+f Real          fSollPosition<br>
+t time          tShiftDelay<br>
+s String       sRxDate</p>
+<p>定义大写 实例化小写</p>
+<p>st语言没有自增操作 如果一个指针变量POINT+1的话只是向后挪动一字节<br>
+REF变量可以赋初值</p>
+<p>IF NOT bLogged THEN<br>
+ADSLOGSTR(<br>
+msgCtrlMask := ADSLOG_MSGTYPE_LOG,<br>
+msgFmtStr   := 'POU is running! iInput status checked.',<br>
+strArg      := ''<br>
+);<br>
+bLogged := TRUE;<br>
+END_IF</p>
+<p>NAME AT %IX0.0 : BOOL;<br>
+X B W D 分别代表BOOL(1) BYTE(8) WORD(16) DWORD(32) 要是有超过4字节32的就用B<br>
+.之前表示字节 .之后表示位</p>
+<p>源性plc相当于配置下拉（正常0V），外部需要配置输出高电平传感器（PNP输出24V），漏极相当于配置上拉（正常24V），外部需要配置低电平传感器（NPN输出0V）。</p>
+<p>Q（Switching device，开闭/分断器件）：用于通断主电路或大功率电路。</p>
+<p>QS：隔离开关 / 刀开关（S 代表 Disconnector/Switch，主要用于检修时形成可见断点、无灭弧或弱灭弧能力）。</p>
+<p>QF：断路器 / 空开（F 代表 Protection/Fault，具备短路和过载快速切断保护能力的开关）。</p>
+<p>S（Switching device for control circuit，控制回路开关）：用于传输控制信号，不承载动力大电流。</p>
+<p>SB：操作按钮（B 代表 Button，如急停按钮、启动/停止按钮）。</p>
+<p>SQ：行程开关 / 限位开关（位置检测）。</p>
+<p>K（Relay / Contactor，继电器与接触器）：</p>
+<p>KM：交流接触器（M 代表 Motor，用于通断电机等大电流设备主电源）。</p>
+<p>KA：中间继电器（A 代表 Auxiliary 辅助，用于单片机/PLC 弱电与强电之间的电气隔离与信号中继）。</p>
+<p>KT：时间继电器。</p>
+<p>T &amp; U（电能转换）：</p>
+<p>TC / T：控制变压器（如 380V 转 220V）。</p>
+<p>U / VC：开关电源（AC 220V 转 DC 24V 整流稳压模块）。</p>
+<p>F（Protection device，保护器件）：</p>
+<p>FU：熔断器 / 保险丝。</p>
+<p>FR：热过载继电器（用于电机过载发热保护）。</p>
+<p>X &amp; W（连接与线缆）：</p>
+<p>XT / X：接线端子排。</p>
+<p>W：导线、电缆、总线。</p>
+<p>类型缩写对应 PLC 数据类型常见示例含义<br>
+x 或 bBOOL（布尔量，1 位）i_xEnable / i_bStart开关、使能、触发信号<br>
+n 或 iINT / DINT（整型）nAxisID / nErrorCode轴编号、故障码、计数器<br>
+f 或 lrREAL / LREAL（浮点数）fVelocity / lrActPos速度、坐标（位移）tTIME（时间类型）tDelayTime延时设定（如 T#500MS）<br>
+sSTRING（字符串）sRecipeName配方名、轴名称<br>
+eENUM（枚举类型）eAxisState轴运行状态机枚举<br>
+stSTRUCT（结构体）stAxisConfig轴配置参数结构体<br>
+fbFUNCTION_BLOCK（功能块实例）fbMoveAbs运动功能块实例<br>
+a 或 arrARRAY（数组）arrAxisList轴参数或 IO 数组</p>
+<p>看了光电所plc的错误处理逻辑经常不好懂 而且写很多 自己想了一个错误逻辑或许可以简化点</p>
+<h3 id="流程图">流程图</h3>
+<pre><code class="language-stl">
+┌── 轨道 A：[动作 1 (耗时)] ──&gt; [动作 2 (依附 1)] ──┐
+               │                                                  │
+[触发异常 990] ─┤                                                  ├──&gt; [汇合完成 999]
+ (双轨并发启动) │                                                  │
+               └── 轨道 B：[动作 3] ───────&gt; [动作 4] ──&gt; [动作 5] ┘
+</code></pre>
+<h3 id="示例代码">示例代码</h3>
+<pre><code class="language-stl">VAR
+    sub_step_A : INT; // 轨道 A 步号 (动作 1 -&gt; 动作 2)
+    sub_step_B : INT; // 轨道 B 步号 (动作 3 -&gt; 动作 4 -&gt; 动作 5)
+    bTrackA_Done : BOOL;
+    bTrackB_Done : BOOL;
+    step_timeout_ton : TON;
+END_VAR
+
+CASE expose_scan_i OF
+    (* ================= 990: 触发双轨并行异常收尾 ================= *)
+    990:
+        sub_step_A   := 1;     // 激活轨道 A
+        sub_step_B   := 1;     // 激活轨道 B
+        bTrackA_Done := FALSE;
+        bTrackB_Done := FALSE;
+        
+        step_timeout_ton(IN := TRUE, PT := T#5S); // 总看门狗防死锁
+        expose_scan_i := 991;  // 转入双轨执行与汇合等待
+
+    (* ================= 991: 双轨并行推进与最终 Join ================= *)
+    991:
+        step_timeout_ton();
+
+        (* ------------- 轨道 A 逻辑 (1 耗时 -&gt; 2 依赖 1) ------------- *)
+        IF NOT bTrackA_Done THEN
+            CASE sub_step_A OF
+                1: (* 动作 1：耗时动作 (例如轴减速停止) *)
+                    fb_Stop[Axis_E](Execute := TRUE, Deceleration := 2000.0);
+                    IF fb_Stop[Axis_E].Done OR fb_Stop[Axis_E].Error THEN
+                        fb_Stop[Axis_E](Execute := FALSE);
+                        sub_step_A := 2; // 动作 1 彻底完成后，才准进动作 2
+                    END_IF;
+
+                2: (* 动作 2：强依赖动作 1 (例如轴停稳后，抱闸锁死/关伺服使能) *)
+                    Axis_Struct[Axis_E].i_xEnable := FALSE; // 关使能
+                    bTrackA_Done := TRUE;                   // 轨道 A 全部收尾完成
+            END_CASE;
+        END_IF;
+
+        (* ------------- 轨道 B 逻辑 (3 -&gt; 4 -&gt; 5 顺序流转) ------------- *)
+        IF NOT bTrackB_Done THEN
+            CASE sub_step_B OF
+                1: (* 动作 3：例如立即关快门/切断紫外光源 *)
+                    DO_Shutter := FALSE;
+                    sub_step_B := 2; // 立即转入动作 4，根本不等轨道 A 的电机
+
+                2: (* 动作 4：例如关辅助吹气/关气阀 *)
+                    DO_BlowGas := FALSE;
+                    sub_step_B := 3; // 转入动作 5
+
+                3: (* 动作 5：纯软件标志与计数器复位 *)
+                    expose_auto_cnt   := 0;
+                    expose_auto_cnt_i := 0;
+                    expose_auto       := 0;
+                    expose_auto_flg   := nErrorCode;
+                    bTrackB_Done      := TRUE; // 轨道 B 全部收尾完成
+            END_CASE;
+        END_IF;
+
+        (* ------------- 双轨汇合点 (Join) ------------- *)
+        IF (bTrackA_Done AND bTrackB_Done) OR step_timeout_ton.Q THEN
+            step_timeout_ton(IN := FALSE);
+            expose_scan_i := 999; // 所有硬件与软件全部落入安全态，停靠报警
+        END_IF;
+
+    (* ================= 999: 报警驻留步 ================= *)
+    999:
+        IF bAlarmReset THEN
+            nErrorCode    := 0;
+            expose_scan_i := 0;
+        END_IF;
+END_CASE;
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li>
+<ul>
+<li><a href="#%E6%B5%81%E7%A8%8B%E5%9B%BE">流程图</a></li>
+<li><a href="#%E7%A4%BA%E4%BE%8B%E4%BB%A3%E7%A0%81">示例代码</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://dss544.github.io/post/bian-cheng-zhu-ji/">
+              <h3 class="post-title">
+                编程珠玑
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://dss544.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
